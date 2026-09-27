@@ -1,0 +1,10 @@
+[package]
+name = "aria-ui-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "UI engine of the Aria Kernel (declarative UI extension registry, form metadata)"
+
+[dependencies]

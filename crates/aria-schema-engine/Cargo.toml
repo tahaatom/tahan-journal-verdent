@@ -1,0 +1,10 @@
+[package]
+name = "aria-schema-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Schema engine of the Aria Kernel (custom fields as first-class analytical citizens)"
+
+[dependencies]

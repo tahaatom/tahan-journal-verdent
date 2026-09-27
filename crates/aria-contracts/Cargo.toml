@@ -1,0 +1,10 @@
+[package]
+name = "aria-contracts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Public contracts layer of the Aria Kernel (command/event envelopes, plugin manifest, RPC, service traits, versioning)"
+
+[dependencies]

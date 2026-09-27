@@ -1,0 +1,10 @@
+[package]
+name = "aria-foundation-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Foundation engine of the Aria Kernel (errors, IDs, time/Jalali, config, logging)"
+
+[dependencies]

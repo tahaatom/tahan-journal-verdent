@@ -1,0 +1,3007 @@
+
+# ۱) قانون کلی استفاده از این پرامپت‌ها
+
+روش صحیح ارسال به هوش مصنوعی:
+
+1. ابتدا **پرامپت مادر** را ارسال کنید.
+2. از هوش مصنوعی بخواهید فقط تأیید دهد که معماری و قوانین را فهمیده است.
+3. سپس **فاز ۰** را ارسال کنید.
+4. بعد از تکمیل فاز ۰، فازهای بعدی را یکی‌یکی ارسال کنید.
+5. بعد از هر فاز، **پرامپت کنترل کیفیت** را ارسال کنید.
+6. تا زمانی که فاز قبلی کامل نشده، فاز بعدی را ارسال نکنید.
+
+---
+
+# ۲) پرامپت مادر پروژه ژورنال طهان / کرنل آریا
+
+این پرامپت باید قبل از همه فازها ارسال شود.
+
+```text
+MASTER PROMPT — TAHAN JOURNAL / ARIA KERNEL
+
+PROJECT NAME: Tahan Journal
+KERNEL NAME: Aria Kernel
+REFERENCE DOCUMENT: Tahan Journal Comprehensive Document — Version 5
+DEVELOPMENT MODE: AI-Driven Development
+PRIMARY IMPLEMENTER: AI coding assistant
+PRODUCT LANGUAGE: Persian
+UI DIRECTION: True RTL
+PLATFORM: Desktop-first, offline-first, local-first
+ARCHITECTURE: Engine-based modular kernel with controlled plugins
+
+You are a principal software architect and senior engineer specialized in:
+- Rust systems programming
+- Tauri desktop applications
+- React/TypeScript frontends
+- SQLite/SQLCipher storage
+- plugin architectures
+- offline-first secure applications
+- Python sidecar analytics plugins
+
+Your task is to implement the entire Tahan Journal project from Phase 0 through Phase 5.5 exactly according to this master prompt, the phase prompts, and the Tahan Journal Document Version 5.
+
+NON-NEGOTIABLE PRINCIPLES:
+
+1. Offline-first
+- The application must work completely offline.
+- No user data may be sent to external servers.
+- Network access is disabled by default.
+- Any future network capability must be explicit, permission-based, and user-approved.
+
+2. Persian and RTL are core services
+- All UI must be Persian and right-to-left.
+- Persian calendar must be supported for display.
+- Storage time must be UTC/ISO 8601.
+- Prices should be displayed with Latin digits for financial precision.
+- General statistics may use Persian digits.
+- Font must be Vazirmatn.
+- i18n must be centralized, not scattered.
+
+3. Custom fields are first-class citizens
+- User-defined fields must be usable in:
+  - forms
+  - filters
+  - lists
+  - dashboards
+  - statistics
+  - future insights
+- Custom fields must not be limited to form display.
+
+4. Contract-first development
+- Public contracts are the source of truth.
+- Internal implementation may evolve, but public contracts must remain versioned and backward-compatible.
+- No breaking change is allowed without explicit deprecation policy.
+
+5. Plugin-controlled architecture
+- Plugins must not directly access the database, kernel memory, file system, or other plugins.
+- Plugins must communicate only through official kernel services and JSON-RPC contracts.
+- Plugins must have manifest, identity, version, capabilities, permissions, resource limits, and health policy.
+- Plugin crash is acceptable if isolated; kernel crash is not acceptable.
+
+6. Data protection
+- No plugin crash, UI error, or predictable failure may cause loss of committed user data.
+- Raw imported data must remain immutable.
+- Manual overrides must be tracked.
+- Effective data must be derived from canonical data plus override ledger.
+- Backups must be encrypted, validated, and restorable.
+
+7. Kernel completeness
+- The kernel must be complete in contracts from day one.
+- Version 1 implements only what version 1 needs, but all major contracts, boundaries, and extension points must be defined.
+- Future features must be added through plugins or versioned engine upgrades, not by rewriting the kernel.
+
+8. AI development restrictions
+You must not:
+- create a new engine without explicit approval
+- create a new abstraction layer without explicit approval
+- change public contracts without explicit approval
+- globally change data structures to solve a local bug
+- remove deferred features
+- change acceptance criteria
+- add heavy dependencies without explicit approval
+- allow plugins direct database access
+- guess when a contract is unclear; instead choose the simplest interpretation consistent with Tahan Document Version 5 and record it in docs/ASSUMPTIONS.md
+
+TECHNOLOGY BASELINE:
+
+Backend / Kernel:
+- Rust stable
+- Cargo workspace
+- Tauri 2
+- tokio
+- serde
+- serde_json
+- thiserror
+- anyhow
+- tracing
+- tracing-subscriber
+- tracing-appender
+- rusqlite
+- SQLCipher-compatible encrypted SQLite
+- refinery for migrations
+- uuid
+- chrono
+- Jalali calendar library compatible with chrono
+- semver
+- jsonschema
+- sysinfo
+- interprocess or stdio-based local IPC
+- argon2
+- aes-gcm
+- zeroize
+- secrecy
+- blake3
+- zstd
+- image
+- csv
+- encoding_rs
+- directories or dirs
+
+Frontend:
+- React 18+
+- TypeScript strict mode
+- Vite
+- Tailwind CSS
+- Radix UI or Headless UI
+- React Hook Form
+- Zod
+- @hookform/resolvers
+- TanStack Table
+- TanStack Virtual
+- TanStack Query
+- Zustand or Jotai
+- Apache ECharts
+- i18next
+- react-i18next
+- date-fns-jalali or dayjs Jalali plugin
+- Vazirmatn font
+- Vitest
+- React Testing Library
+- Playwright or tauri-driver for E2E
+
+Python sidecar plugins:
+- Python 3.11+
+- JSON-RPC 2.0 over stdio
+- separate process only
+- venv per Python plugin
+- prepackaged dependencies in version 1 and 2; no internet installation
+- allowed core libraries:
+  - polars
+  - pandas
+  - numpy
+  - scipy
+  - matplotlib
+- allowed report libraries for advanced reports in version 2:
+  - fpdf2
+  - arabic_reshaper
+  - python-bidi
+
+Testing and quality:
+- cargo test
+- proptest
+- criterion
+- mockall where useful
+- rustfmt
+- cargo clippy
+- ESLint
+- Prettier
+- Vitest
+- React Testing Library
+- Playwright or tauri-driver
+- GitHub Actions CI configuration must exist, even if local execution is primary
+
+WORKSPACE STRUCTURE:
+
+Create the following repository structure:
+
+tahan-journal/
+├── Cargo.toml
+├── rust-toolchain.toml
+├── package.json
+├── docs/
+│   ├── architecture/
+│   │   ├── system-boundaries.md
+│   │   ├── engine-dependencies.md
+│   │   ├── runtime-model.md
+│   │   ├── security-model.md
+│   │   └── technology-baseline.md
+│   ├── contracts/
+│   │   ├── command-contract.md
+│   │   ├── event-contract.md
+│   │   ├── plugin-manifest.schema.json
+│   │   ├── plugin-api.md
+│   │   ├── error-codes.md
+│   │   ├── versioning-policy.md
+│   │   ├── trade-domain-contract.md
+│   │   ├── r-calculation-contract.md
+│   │   └── execution-leg-contract.md
+│   ├── domain/
+│   │   ├── trade-model.md
+│   │   ├── custom-fields-model.md
+│   │   ├── import-model.md
+│   │   ├── attachment-model.md
+│   │   └── override-model.md
+│   ├── database/
+│   │   ├── schema.md
+│   │   ├── physical-schema-v1.md
+│   │   ├── migration-policy.md
+│   │   └── backup-format.md
+│   ├── testing/
+│   │   ├── acceptance-criteria.md
+│   │   ├── performance-benchmarks.md
+│   │   └── recovery-scenarios.md
+│   ├── phases/
+│   └── tracking/
+│       ├── deferred-features.md
+│       └── capability-matrix.md
+├── crates/
+│   ├── aria-contracts/
+│   ├── aria-foundation-engine/
+│   ├── aria-storage-engine/
+│   ├── aria-security-engine/
+│   ├── aria-schema-engine/
+│   ├── aria-domain-engine/
+│   ├── aria-plugin-engine/
+│   ├── aria-runtime-engine/
+│   ├── aria-query-engine/
+│   └── aria-ui-engine/
+├── apps/
+│   └── tahan-desktop/
+├── frontend/
+├── plugins/
+│   ├── official/
+│   │   ├── mt-import/
+│   │   ├── dashboard-widgets/
+│   │   └── basic-reports/
+│   └── python/
+│       ├── sample-analytics/
+│       └── ariana-basic/
+├── tests/
+└── scripts/
+
+ENGINE DEPENDENCY RULES:
+
+Level 0:
+- aria-contracts
+- aria-foundation-engine
+
+Level 1:
+- aria-storage-engine
+- aria-security-engine
+
+Level 2:
+- aria-schema-engine
+- aria-domain-engine
+
+Level 3:
+- aria-plugin-engine
+- aria-query-engine
+
+Level 4:
+- aria-runtime-engine
+- aria-ui-engine
+
+Rules:
+- Engines may depend only on lower-level engines and shared contracts.
+- Engines must not access another engine’s private data or database tables.
+- Communication must happen through public traits and versioned contracts.
+- Each engine must have its own Cargo.toml, tests, README, and documentation.
+
+DOMAIN CONTRACTS:
+
+Journal Trade in version 1:
+- belongs to exactly one trading account
+- belongs to exactly one symbol
+- has exactly one direction: buy or sell
+- can have multiple Entry Legs
+- can have multiple Exit Legs
+- can have multiple Executions
+- has exactly one implicit Position Group in version 1
+- multiple independent trading decisions must be separate Journal Trades
+
+Position Group:
+- reserved in version 1
+- explicitly implemented in version 2
+
+Execution and Leg:
+- Execution is a real broker fill
+- Entry Leg is a semantic entry event
+- Exit Leg is a semantic exit event
+- each Leg may contain one or more Executions
+- each Execution belongs to exactly one Leg
+- manual trades must create manual Executions
+- imported data must first become SourceRecord, then Execution, then assigned to a Leg
+- unassigned Executions must be marked as needs_assignment
+- unassigned Executions must not be used in PnL or R calculations
+
+R calculation:
+- R is a unit of initial accepted risk
+- multiple entries use volume-weighted average entry price
+- initial stop loss is the basis for risk
+- moving stop loss later does not change initial R basis
+- if no stop loss exists, RiskCalculationStatus = no_stop_loss and automatic R is not calculated
+- user may enter manual risk; then RiskBasis = manual_risk
+- commission and swap must be deducted from realized PnL
+- for multiple exits, total net realized PnL is divided by initial risk amount
+- ExitLegR may be calculated per exit, but TradeR is based on total net result
+- MAE/MFE fields are reserved in version 1 and activated in version 3 when sufficient price path data exists
+
+DATA LAYERS:
+
+1. Raw Source Data
+- immutable
+- exact imported source payload
+- hash tracked
+
+2. Canonical Data
+- normalized journal data
+- editable through official commands
+
+3. Override Ledger
+- manual corrections
+- preserves previous value, new value, reason, time, source, priority, reversibility
+
+4. Effective Data
+- final data used for display, filter, stats
+- derived from canonical data plus overrides
+
+5. Analytical Projection
+- summary tables and caches
+- regenerable
+- not source of truth
+
+SECURITY BASELINE:
+
+- Password hashing: Argon2id
+- Key derivation: KDF from user password
+- Encryption: AES-GCM
+- Memory hygiene: zeroize and secrecy
+- Database encryption: SQLCipher-compatible encrypted SQLite
+- Backup encryption: same protection model as database
+- Audit logs for sensitive operations
+- Automatic lock must cut access to active keys, not only lock UI
+- Forgotten password recovery is impossible; user must be warned
+- Plugins must not access keys
+
+PERFORMANCE TARGETS:
+
+Use these as testable goals:
+
+- App launch: under 2-3 seconds
+- Dashboard with cache: P50 < 150 ms, P95 < 300 ms
+- Technical trade save: P95 < 300 ms
+- Fast user trade entry scenario: P95 < 15 seconds
+- Full trade entry scenario: P95 < 60 seconds
+- Simple filter: P95 < 500 ms
+- Combined filter: P95 < 800 ms
+- Trade list with 100,000 synthetic records must remain usable
+- Import 1000 records: under 10 seconds
+- Full backup: under 30 seconds
+- Full restore: under 60 seconds
+
+PHASE EXECUTION PROTOCOL:
+
+For every phase:
+1. Read the phase contract.
+2. Identify affected contracts.
+3. Implement only that phase.
+4. Write tests.
+5. Update documentation.
+6. Report affected contracts.
+7. Report assumptions.
+8. Do not move to the next phase.
+
+If any ambiguity appears:
+- choose the simplest interpretation consistent with Tahan Document Version 5
+- record it in docs/ASSUMPTIONS.md
+- do not invent new architecture
+
+OUTPUT FORMAT FOR EACH PHASE:
+
+For each phase implementation, provide:
+1. changed files
+2. new files
+3. commands to install dependencies
+4. commands to run
+5. commands to test
+6. acceptance checklist
+7. known limitations
+8. affected contracts
+9. assumptions
+```
+
+---
+
+# ۳) پرامپت کنترل کیفیت بعد از هر فاز
+
+بعد از هر فاز، این پرامپت را ارسال کنید:
+
+```text
+PHASE QUALITY REVIEW PROMPT
+
+Review the implementation of the phase I just asked you to implement.
+
+Do not add new features.
+
+Check the following:
+
+1. Contract compliance
+- Does the implementation follow the phase contract?
+- Were any public contracts changed?
+- Were any assumptions recorded?
+
+2. Engine boundaries
+- Did any engine access another engine’s private data?
+- Did any plugin get direct database access?
+- Were dependencies kept at the correct engine level?
+
+3. Data integrity
+- Are writes transactional?
+- Is raw data immutable?
+- Are overrides tracked?
+- Are effective values derived correctly?
+
+4. Security
+- Are secrets protected?
+- Are keys zeroized where practical?
+- Are sensitive operations audited?
+
+5. Performance
+- Are indexes used?
+- Are heavy operations backgrounded?
+- Are dashboard stats using projections or caches?
+
+6. Testing
+- Are unit tests present?
+- Are integration tests present where required?
+- Are failure scenarios tested?
+
+7. UI/RTL
+- Is UI fully Persian?
+- Is RTL correct?
+- Are price inputs LTR where needed?
+- Is Vazirmatn used?
+
+8. Documentation
+- Were contracts updated?
+- Were assumptions recorded?
+- Were deferred features preserved in tracking docs?
+
+Provide:
+- list of issues
+- severity of each issue
+- exact fix plan
+- tests needed after fix
+
+Do not move to the next phase until all critical and high issues are fixed.
+```
+
+---
+
+# ۴) پرامپت فاز ۰ — آماده‌سازی مخزن و خط پایه فناوری
+
+```text
+PHASE 0 — REPOSITORY BOOTSTRAP AND TECHNOLOGY BASELINE
+
+GOAL:
+Create the repository skeleton, toolchain configuration, documentation structure, and technology baseline before implementing any engine.
+
+SCOPE:
+1. Create Cargo workspace with all planned crates as empty but valid crates:
+   - aria-contracts
+   - aria-foundation-engine
+   - aria-storage-engine
+   - aria-security-engine
+   - aria-schema-engine
+   - aria-domain-engine
+   - aria-plugin-engine
+   - aria-runtime-engine
+   - aria-query-engine
+   - aria-ui-engine
+
+2. Create Tauri 2 desktop app skeleton in apps/tahan-desktop.
+
+3. Create frontend skeleton:
+   - React + TypeScript + Vite
+   - Tailwind CSS
+   - RTL base layout
+   - Vazirmatn font
+   - i18next with Persian base
+   - basic shell layout with sidebar and main area
+
+4. Create docs structure exactly as defined in the master prompt.
+
+5. Create docs/architecture/technology-baseline.md containing:
+   - exact or allowed versions for Rust, Node, Python, Tauri, React, TypeScript
+   - approved libraries
+   - forbidden libraries
+   - upgrade policy
+   - migration policy for future technology changes
+
+6. Configure:
+   - rustfmt
+   - cargo clippy
+   - ESLint
+   - Prettier
+   - editorconfig
+   - CI workflow file for GitHub Actions
+
+7. Create scripts:
+   - dev backend
+   - dev frontend
+   - test all
+   - lint all
+   - format all
+
+ACCEPTANCE CRITERIA:
+- cargo build succeeds
+- cargo test succeeds with placeholder tests
+- frontend dev server starts
+- Tauri app launches in development mode
+- UI shows a Persian RTL placeholder shell
+- docs folder structure exists
+- technology baseline document exists
+- CI configuration exists
+
+AI RESTRICTIONS:
+- Do not implement engine business logic.
+- Do not add heavy dependencies not listed in master prompt.
+- Do not move to Phase 1.1.
+```
+
+---
+
+# ۵) پرامپت‌های فازهای نسخه ۱
+
+---
+
+## فاز ۱.۱ — ساختار پروژه و موتور پایه
+
+```text
+PHASE 1.1 — PROJECT STRUCTURE AND FOUNDATION ENGINE
+
+GOAL:
+Implement the foundation engine and finalize the workspace skeleton.
+
+SCOPE:
+Implement aria-foundation-engine.
+
+REQUIRED MODULES:
+1. Error model
+- Define structured kernel error types using thiserror.
+- Each error must have:
+  - unique numeric code
+  - machine-readable variant
+  - user-readable Persian message key
+  - optional context
+- Use anyhow only at application boundaries, not inside engine public APIs.
+
+2. IDs
+- Use uuid v4 for entity IDs.
+- Create typed ID wrappers for major entities:
+  - ProfileId
+  - AccountId
+  - SymbolId
+  - TradeId
+  - EntryLegId
+  - ExitLegId
+  - ExecutionId
+  - SourceRecordId
+  - FieldId
+  - AttachmentId
+  - PluginId
+  - EventId
+  - CommandId
+
+3. Time service
+- Store timestamps in UTC.
+- Provide conversion helpers for display.
+- Integrate a Jalali calendar helper for Persian display.
+- Provide trading session time utilities as a foundation hook, even if simple in version 1.
+
+4. Configuration
+- Use directories/dirs for standard app data paths.
+- Support TOML or JSON configuration.
+- Define KernelConfig with:
+  - data directory
+  - database path
+  - attachments directory
+  - backup directory
+  - log directory
+  - plugin directory
+  - locale
+  - theme
+  - auto-lock timeout
+
+5. Logging
+- Configure tracing and tracing-subscriber.
+- Logs must be local.
+- Logs must not contain secrets or full user financial payloads.
+- Provide log levels and structured fields.
+
+TECH LIBRARIES:
+- uuid
+- chrono
+- Jalali-compatible chrono helper
+- thiserror
+- anyhow
+- tracing
+- tracing-subscriber
+- tracing-appender
+- serde
+- serde_json
+- directories or dirs
+
+TESTS:
+- ID generation uniqueness tests
+- error code uniqueness tests
+- time conversion tests
+- config loading tests
+- log initialization test
+
+ACCEPTANCE CRITERIA:
+- aria-foundation-engine compiles independently
+- all foundation tests pass
+- no other engine business logic is implemented
+- docs/contracts/error-codes.md is initialized
+
+DO NOT:
+- implement storage
+- implement security
+- implement UI features
+- move to Phase 1.2
+```
+
+---
+
+## فاز ۱.۲ — قراردادها
+
+```text
+PHASE 1.2 — CONTRACTS LAYER
+
+GOAL:
+Create the public contract layer that all engines and plugins must use.
+
+SCOPE:
+Implement aria-contracts as a standalone crate containing only contracts, types, traits, schemas, and versioning definitions. No business logic.
+
+REQUIRED CONTRACTS:
+1. Command envelope
+- command_id
+- command_type
+- payload
+- issuer
+- timestamp
+- correlation_id
+
+2. Event envelope
+- event_id
+- event_type
+- event_version
+- source
+- timestamp
+- correlation_id
+- payload
+
+3. Plugin manifest contract
+- JSON Schema for plugin manifest
+- required fields:
+  id, name, version, api_version, entrypoint, runtime_mode, kernel_version_range, api_version_range
+- optional fields:
+  capabilities, permissions, resources, dependencies, locales, ui_extension_points, description, author, license, trust_level, health_policy
+
+4. Plugin RPC contract
+- JSON-RPC 2.0 message structures
+- request/response/error types
+- method registry contract
+- session token contract
+- max message size: 10 MB
+- default timeout: 30 seconds
+
+5. Kernel service traits
+- KeyProvider
+- EncryptionProvider
+- SchemaProvider
+- QueryProvider
+- AuditProvider
+- BackupProvider
+- AttachmentProvider
+- TradeServiceProvider
+- FieldServiceProvider
+- PluginHostServices
+
+6. Error contract
+- stable error code ranges per engine
+- error payload structure for RPC
+
+7. Versioning policy
+- kernel contract version
+- plugin API version
+- database schema version
+- backup format version
+- event versioning policy
+
+REQUIRED DOCUMENTS:
+- docs/contracts/command-contract.md
+- docs/contracts/event-contract.md
+- docs/contracts/plugin-manifest.schema.json
+- docs/contracts/plugin-api.md
+- docs/contracts/error-codes.md
+- docs/contracts/versioning-policy.md
+- docs/contracts/trade-domain-contract.md
+- docs/contracts/r-calculation-contract.md
+- docs/contracts/execution-leg-contract.md
+
+TESTS:
+- JSON schema validation tests for plugin manifest
+- serde roundtrip tests for command/event envelopes
+- version compatibility helper tests
+
+ACCEPTANCE CRITERIA:
+- aria-contracts compiles without business logic
+- all contracts are documented
+- manifest schema validates sample manifests
+- command/event envelopes are stable and versioned
+
+DO NOT:
+- implement engine behavior
+- move to Phase 1.3
+```
+
+---
+
+## فاز ۱.۳ — موتور ذخیره‌سازی
+
+```text
+PHASE 1.3 — STORAGE ENGINE
+
+GOAL:
+Implement the storage engine using encrypted SQLite.
+
+SCOPE:
+Implement aria-storage-engine.
+
+REQUIRED FEATURES:
+1. Database connection
+- Use rusqlite with SQLCipher-compatible encryption.
+- Enable WAL.
+- Enable foreign_keys.
+- Set busy_timeout.
+- Use NORMAL synchronous unless benchmark proves otherwise.
+- Use PRAGMA integrity_check in health checks.
+
+2. Migrations
+- Use refinery or PRAGMA user_version-based migration system.
+- Migrations must be versioned, ordered, and testable.
+- Migration must not lose data.
+- Backup before risky migrations must be supported.
+
+3. Physical schema v1
+Create tables for:
+- profiles
+- trading_accounts
+- symbols
+- journal_trades
+- entry_legs
+- exit_legs
+- executions
+- source_records
+- manual_overrides
+- custom_fields
+- field_options
+- field_values
+- attachments
+- attachment_trade_links
+- audit_logs
+- system_events
+- plugins
+- settings
+- summary projections needed for dashboard
+
+Reserved fields in journal_trades:
+- position_group_id reserved
+- mae_price, mfe_price, mae_amount, mfe_amount, mae_r, mfe_r reserved
+- max_drawdown_inside_trade reserved
+- risk_calculation_status
+- risk_basis
+
+4. Transaction API
+- Provide atomic write transactions.
+- Provide read access without heavy transaction overhead.
+- Provide rollback on error.
+
+5. Attachments storage
+- Store attachment files outside database.
+- Store metadata inside database.
+- Use blake3 hash for integrity and duplicate detection.
+- Generate thumbnail paths metadata.
+
+6. Backup storage foundation
+- Define backup package layout.
+- Support manifest.json, checksums, encrypted payload placeholders.
+
+7. Indexes
+Create indexes for:
+- trades by account_id, symbol_id, status, entry_time
+- legs by trade_id
+- executions by trade_id, leg_id
+- field_values by field_id and typed value columns
+- attachments by hash
+- audit_logs by time
+- source_records by import batch/status
+
+DOCUMENTS:
+- docs/database/schema.md
+- docs/database/physical-schema-v1.md
+- docs/database/migration-policy.md
+
+TESTS:
+- migration up tests
+- transaction commit/rollback tests
+- foreign key tests
+- integrity check test
+- attachment metadata tests
+- index existence tests
+- encrypted database open/close tests
+
+ACCEPTANCE CRITERIA:
+- encrypted SQLite database can be created and opened
+- migrations run cleanly
+- schema matches domain contracts
+- no business logic from domain engine is implemented here
+
+DO NOT:
+- implement trade business rules
+- implement query analytics beyond basic storage queries
+- move to Phase 1.4
+```
+
+---
+
+## فاز ۱.۴ — موتور امنیت
+
+```text
+PHASE 1.4 — SECURITY ENGINE
+
+GOAL:
+Implement authentication, encryption, key management, and audit foundation.
+
+SCOPE:
+Implement aria-security-engine.
+
+REQUIRED FEATURES:
+1. Password handling
+- Hash passwords with Argon2id.
+- Never store raw passwords.
+- Implement password verification.
+- Implement login attempt rate limiting stored locally.
+
+2. Key management
+- Derive encryption keys from password using KDF.
+- Implement KeyProvider contract.
+- Use zeroize and secrecy to reduce key lifetime in memory.
+- Support key rotation hooks for future.
+- Support profile-specific keys.
+
+3. Encryption services
+- Implement EncryptionProvider using AES-GCM.
+- Support authenticated metadata.
+- Support encryption package format:
+  magic, format_version, kdf_identifier, kdf_parameters, salt, cipher_identifier, nonce, authenticated_metadata, ciphertext, authentication_tag
+
+4. Auto-lock
+- Implement auto-lock timer.
+- Auto-lock must cut access to active keys, not only hide UI.
+- Unlock requires password.
+
+5. Audit
+- Implement audit log service.
+- Log sensitive operations:
+  login, logout, lock, unlock, backup create, backup restore, plugin enable, plugin disable, trade delete, field deactivate, settings change
+
+6. Password recovery warning
+- Provide explicit warning structure for forgotten password.
+- No password recovery backdoor.
+
+TESTS:
+- password hash/verify tests
+- wrong password tests
+- rate limiter tests
+- encrypt/decrypt roundtrip tests
+- tamper detection tests
+- key zeroization behavior tests where practical
+- audit log tests
+
+ACCEPTANCE CRITERIA:
+- security engine satisfies KeyProvider and EncryptionProvider contracts
+- database and backup encryption integration points are ready
+- audit logs are written for sensitive operations
+- no secret appears in logs
+
+DO NOT:
+- implement UI screens unless through contract hooks
+- move to Phase 1.5
+```
+
+---
+
+## فاز ۱.۵ — موتور فیلدها
+
+```text
+PHASE 1.5 — SCHEMA ENGINE / CUSTOM FIELDS
+
+GOAL:
+Implement the custom field engine as an analytical first-class system.
+
+SCOPE:
+Implement aria-schema-engine.
+
+SUPPORTED STORAGE TYPES IN VERSION 1:
+- Text
+- LongText
+- Integer
+- Decimal
+- Boolean
+- DateTime
+- Enum
+- MultiEnum
+- Rating
+- TagSet
+
+SUPPORTED SEMANTIC TYPES IN VERSION 1:
+- short_text
+- long_text
+- number
+- price
+- percent
+- money
+- datetime
+- boolean
+- single_select
+- multi_select
+- rating
+- tag
+
+REQUIRED FEATURES:
+1. Field registry
+- Define custom fields with:
+  id, technical_key, display_label, description, storage_type, semantic_type, unit, default_value, required, active, filterable, stat_enabled, analysis_enabled, display_order, form_group, validation_rules, schema_version
+
+2. Field options
+- Support options for Enum and MultiEnum fields.
+- Each option has id, field_id, value, label, order, active.
+
+3. Field lifecycle
+- Fields with historical data must not be hard deleted.
+- Support active/inactive/archive states.
+- Type changes must be controlled and migration-aware.
+
+4. Validation
+- Validate values by storage type and semantic type.
+- Support min/max, regex, enum membership, required state.
+- Return Persian validation error keys.
+
+5. Typed storage
+- Store field values in typed columns in field_values:
+  text_value, integer_value, decimal_value, boolean_value, datetime_value, json_value
+- One row per trade-field.
+- Unique constraint on trade_id + field_id.
+
+6. Indexing
+- Create indexes for filterable and stat_enabled fields.
+- Support query engine access through SchemaProvider.
+
+7. Form metadata
+- Provide metadata for frontend form rendering:
+  section/group, order, widget type, validation rules, options, visibility
+
+TESTS:
+- field CRUD tests
+- option CRUD tests
+- lifecycle tests
+- validation tests for every supported type
+- typed storage tests
+- inactive field query behavior tests
+
+ACCEPTANCE CRITERIA:
+- custom field can be defined without code
+- field values can be stored typed
+- field can appear in filters and stats through query engine contract
+- fields with data are not destructively deleted
+
+DO NOT:
+- implement dashboard UI
+- move to Phase 1.6
+```
+
+---
+
+## فاز ۱.۶ — موتور دامنه
+
+```text
+PHASE 1.6 — DOMAIN ENGINE
+
+GOAL:
+Implement the trading domain model, commands, events, and R calculation service.
+
+SCOPE:
+Implement aria-domain-engine.
+
+REQUIRED ENTITIES:
+- Profile
+- TradingAccount
+- Symbol
+- JournalTrade
+- EntryLeg
+- ExitLeg
+- Execution
+- SourceRecord
+- ManualOverride
+- PositionGroup reserved structure
+
+VERSION 1 DOMAIN RULES:
+- Each Journal Trade has exactly one account, one symbol, one direction.
+- Each Journal Trade has one implicit Position Group.
+- Multiple independent decisions must be separate trades.
+- Multiple entries and exits are allowed through legs.
+- Each Execution belongs to one Leg.
+- Manual trades create manual Executions.
+- Imported trades create SourceRecord first, then Execution, then Leg assignment.
+- Unassigned Executions are marked needs_assignment and excluded from PnL/R.
+
+REQUIRED COMMANDS:
+- CreateTradeCommand
+- UpdateTradeCommand
+- DeleteTradeCommand
+- AddEntryLegCommand
+- UpdateEntryLegCommand
+- AddExitLegCommand
+- UpdateExitLegCommand
+- AssignExecutionToLegCommand
+- AddManualOverrideCommand
+- RevertManualOverrideCommand
+- LinkAttachmentToTradeCommand
+
+REQUIRED EVENTS:
+- TradeCreated
+- TradeUpdated
+- TradeDeleted
+- EntryLegAdded
+- ExitLegAdded
+- ExecutionAssigned
+- OverrideAdded
+- OverrideReverted
+- StatsInvalidated
+
+EVENT RULES:
+- Events publish after commit.
+- Events are idempotent for consumers.
+- Vital events use outbox.
+- UI-only events are not persisted unless needed.
+
+R CALCULATION SERVICE:
+Implement exactly:
+- PlannedR
+- InitialRiskPriceDistance
+- InitialRiskAmount
+- RealizedPnL
+- RealizedR
+- ExitLegR
+- TradeR
+- RiskCalculationStatus
+- RiskBasis
+
+Rules:
+- weighted average entry for multiple entries
+- initial SL is basis
+- no SL means no automatic R
+- manual risk allowed
+- commission and swap deducted
+- multiple exits summed then divided by initial risk
+
+TESTS:
+- single entry/single exit tests
+- multi-entry weighted average tests
+- multi-exit tests
+- no stop loss tests
+- manual risk tests
+- commission/swap tests
+- unassigned execution exclusion tests
+- command/event tests
+- override effective data tests
+
+ACCEPTANCE CRITERIA:
+- domain rules match Tahan Document Version 5
+- R calculation is deterministic and tested
+- commands are atomic
+- events are emitted after commit
+
+DO NOT:
+- implement UI
+- move to Phase 1.7
+```
+
+---
+
+## فاز ۱.۷ — موتور پلاگین
+
+```text
+PHASE 1.7 — PLUGIN ENGINE
+
+GOAL:
+Implement plugin registration, manifest validation, lifecycle, permissions, and health monitoring.
+
+SCOPE:
+Implement aria-plugin-engine.
+
+REQUIRED FEATURES:
+1. Manifest validation
+- Validate plugin manifest against JSON Schema.
+- Validate required fields.
+- Validate semver ranges for kernel_version_range and api_version_range.
+- Reject invalid manifests.
+
+2. Plugin registry
+- Register installed plugins.
+- Store plugin metadata in database.
+- Track status:
+  installed, enabled, running, stopped, crashed, quarantined, disabled
+
+3. Permissions and capabilities
+- Enforce capabilities from manifest:
+  trades.read, trades.write, trades.delete, fields.read, fields.define, attachments.read, attachments.write, stats.read, ui.widget, ui.page, notifications.show, backup.create, backup.restore, mt.import, mt.live, insights.write, network.access
+- network.access is disabled by default.
+- User can view permissions.
+
+4. Lifecycle
+Install → validate manifest → check permissions → user approval → start → monitor → crash handling → quarantine/disable
+
+5. Quarantine policy
+- If plugin crashes more than 3 times, quarantine it.
+- User can manually disable or re-enable.
+
+6. Resource policy
+- Read max_memory_mb, max_cpu_percent, timeout_seconds from manifest.
+- Pass limits to runtime engine through contract.
+
+7. Health reporting
+- Expose plugin health status to UI through contracts.
+- Store last error and crash count.
+
+TESTS:
+- manifest validation tests
+- semver compatibility tests
+- permission enforcement tests
+- lifecycle state transition tests
+- quarantine tests
+- invalid plugin rejection tests
+
+ACCEPTANCE CRITERIA:
+- no plugin can access database directly
+- manifest is required
+- permissions are enforced
+- health status is observable
+
+DO NOT:
+- implement actual sidecar process execution yet
+- move to Phase 1.8
+```
+
+---
+
+## فاز ۱.۸ — موتور اجرا
+
+```text
+PHASE 1.8 — RUNTIME ENGINE
+
+GOAL:
+Implement plugin execution runtime, especially sidecar and Python sidecar execution.
+
+SCOPE:
+Implement aria-runtime-engine.
+
+REQUIRED FEATURES:
+1. Sidecar process supervisor
+- Launch plugins as separate processes using tokio::process.
+- Communicate via JSON-RPC 2.0 over stdio or local IPC.
+- Use newline-delimited JSON messages.
+- Enforce max message size 10 MB.
+- Enforce default timeout 30 seconds.
+- Use session token authentication.
+
+2. Process monitoring
+- Monitor process liveness.
+- Restart with backoff policy.
+- Stop gracefully.
+- Force kill after timeout.
+- Report crashes to plugin engine.
+
+3. Resource monitoring
+- Use sysinfo to monitor CPU/memory.
+- Enforce limits from manifest as much as OS permits.
+- Suspend or stop plugin if limits repeatedly exceeded.
+
+4. Python sidecar host
+- Launch Python 3.11+ plugins in separate process.
+- Use venv per plugin.
+- Use prepackaged dependencies only.
+- No internet installation in version 1.
+- Provide Python plugin host script with JSON-RPC stdio loop.
+- Provide sample Python plugin.
+
+5. In-process trusted modules
+- Allow only internal trusted modules to run in-process.
+- Installable plugins default to out-of-process.
+
+6. RPC service bridge
+- Expose kernel services to plugins only through permitted APIs.
+- Validate every RPC message.
+- Reject unknown methods.
+- Enforce permissions per method.
+
+TESTS:
+- launch/stop sidecar tests
+- crash/restart tests
+- timeout tests
+- invalid message tests
+- permission denial tests
+- Python sample plugin smoke test
+- resource limit simulation tests where practical
+
+ACCEPTANCE CRITERIA:
+- sample Python plugin runs in separate process
+- plugin crash does not crash kernel
+- RPC messages are validated
+- permissions are enforced
+
+DO NOT:
+- implement marketplace
+- implement WASM
+- move to Phase 1.9
+```
+
+---
+
+## فاز ۱.۹ — موتور پرس‌وجو
+
+```text
+PHASE 1.9 — QUERY ENGINE
+
+GOAL:
+Implement query, filtering, aggregation, projections, and caching for journal data and custom fields.
+
+SCOPE:
+Implement aria-query-engine.
+
+REQUIRED FEATURES:
+1. Filters
+- Simple filters for trades:
+  account, symbol, direction, status, date range, strategy, timeframe, session, tags, emotions, result
+- Custom field filters:
+  equals, not_equals, contains, min, max, in, not_in, exists
+- Combined filters with AND/OR groups
+
+2. Aggregations
+- total trades
+- win rate
+- average R
+- total profit/loss
+- max drawdown basic
+- equity curve data
+- performance by:
+  symbol, strategy, timeframe, session, weekday, custom field
+
+3. Projections
+- Create summary tables or materialized projections for dashboard.
+- Invalidate summaries on StatsInvalidated event.
+- Use background updates for heavy summaries.
+
+4. Caching
+- Cache dashboard projections.
+- Provide cache invalidation.
+- Ensure UI does not recompute heavy stats from raw data on every load.
+
+5. Custom field analytics
+- Any field marked stat_enabled or analysis_enabled must be queryable.
+- Provide grouping by custom field values.
+- Provide typed aggregation by storage type.
+
+6. Query budget
+- Prevent runaway queries.
+- Paginate list queries.
+- Use indexes.
+
+TESTS:
+- filter tests
+- combined filter tests
+- custom field filter tests
+- aggregation correctness tests
+- summary invalidation tests
+- pagination tests
+- performance smoke test with 10,000 synthetic trades
+
+ACCEPTANCE CRITERIA:
+- dashboard queries use projections/cache
+- custom fields are usable in filters and stats
+- queries are paginated
+- no direct plugin access to SQL
+
+DO NOT:
+- implement chart UI
+- move to Phase 1.10
+```
+
+---
+
+## فاز ۱.۱۰ — موتور رابط کاربری
+
+```text
+PHASE 1.10 — UI ENGINE / SHELL
+
+GOAL:
+Implement the Persian RTL application shell and UI extension registry.
+
+SCOPE:
+Implement aria-ui-engine plus frontend shell.
+
+REQUIRED FEATURES:
+1. Tauri shell
+- Create Tauri 2 desktop app.
+- Connect frontend to kernel commands/events.
+- Secure IPC commands.
+
+2. Frontend shell
+- React + TypeScript + Vite
+- Tailwind CSS
+- Radix UI or Headless UI
+- RTL layout
+- Vazirmatn font
+- i18next with Persian locale
+- light/dark theme using CSS variables
+- design tokens for spacing, colors, radius, typography
+
+3. Navigation
+- Dashboard
+- Journal
+- Trade list
+- Settings
+- Plugin health
+- Backup
+- Field manager
+
+4. UI extension registry
+- Declarative extension points only in version 1:
+  dashboard_widget
+  report_page
+  command_menu
+  form_field
+  plugin_settings
+- Plugins must not inject arbitrary React components into main tree in version 1.
+- Kernel renders declarative schemas.
+
+5. Command palette / shortcuts
+- Basic keyboard shortcut infrastructure.
+- Persian labels.
+
+6. Error/loading/empty states
+- Persian error messages.
+- loading skeletons.
+- empty states.
+
+7. RTL quality
+- Use Tailwind logical properties.
+- Price/numeric technical inputs LTR where needed.
+- Date pickers support Jalali display.
+
+TESTS:
+- shell rendering tests
+- navigation tests
+- theme switching tests
+- i18n Persian tests
+- extension registry schema tests
+
+ACCEPTANCE CRITERIA:
+- app launches fully Persian RTL
+- shell is stable
+- extension points are declarative
+- no plugin can directly inject React tree in version 1
+
+DO NOT:
+- implement full trade form yet
+- move to Phase 1.11
+```
+
+---
+
+## فاز ۱.۱۱ — ماژول ژورنال: فرم ثبت معامله
+
+```text
+PHASE 1.11 — JOURNAL MODULE: TRADE ENTRY FORM
+
+GOAL:
+Implement fast and full trade entry forms.
+
+SCOPE:
+Implement journal trade form UI and related frontend/backend command integration.
+
+REQUIRED FEATURES:
+1. Two modes
+- Fast mode: minimal fields, under 15 seconds target
+- Full mode: all metadata, custom fields, attachments, notes
+
+2. Form fields
+- account
+- symbol
+- direction
+- status
+- strategy
+- timeframe
+- session
+- market condition
+- entry type
+- note
+- tags
+- emotions
+- mistakes/behavior labels
+- multiple Entry Legs
+- multiple Exit Legs
+- manual Executions automatically created for manual entries
+- initial SL, TP per entry leg
+- volumes, prices, times
+
+3. Custom fields
+- Render custom fields dynamically from schema engine.
+- Group by form_group.
+- Respect order.
+- Validate with Zod and backend validation.
+
+4. Draft autosave
+- Autosave draft locally.
+- Recover draft after restart.
+
+5. Attachment placeholders
+- Allow attaching images/files.
+- Link type: before, after, chart, other.
+
+6. R preview
+- Show PlannedR preview when entry and SL/TP exist.
+- Show warning if SL missing.
+
+7. Performance UX
+- Use chips, selectable options, last-used values, templates where useful.
+- Minimize typing.
+
+TESTS:
+- form validation tests
+- custom field rendering tests
+- draft autosave tests
+- multi-entry/multi-exit tests
+- manual execution creation tests
+- fast mode and full mode tests
+
+ACCEPTANCE CRITERIA:
+- fast trade entry can be completed under 15 seconds in test scenario
+- full trade entry can be completed under 60 seconds in test scenario
+- custom fields appear without code changes
+- RTL and Persian are correct
+
+DO NOT:
+- implement advanced reports
+- move to Phase 1.12
+```
+
+---
+
+## فاز ۱.۱۲ — ماژول ژورنال: لیست، فیلتر و جزئیات
+
+```text
+PHASE 1.12 — JOURNAL MODULE: LIST, FILTER, DETAILS
+
+GOAL:
+Implement trade list with filtering, search, pagination, and details view.
+
+SCOPE:
+Implement trade list UI using query engine.
+
+REQUIRED FEATURES:
+1. Trade list
+- Use TanStack Table.
+- Use TanStack Virtual for long lists.
+- Server-side pagination.
+- Sortable columns.
+- Selectable columns.
+
+2. Filters
+- account, symbol, direction, status, date range
+- strategy, timeframe, session
+- tags, emotions, mistakes
+- custom field filters
+- combined AND/OR filters
+
+3. Search
+- Basic text search over note and tags.
+- Full-text advanced search deferred to version 4.
+
+4. Details panel/modal
+- Show effective data.
+- Show legs and executions.
+- Show custom fields.
+- Show attachments.
+- Show override history if any.
+- Show R and PnL summary.
+
+5. Actions
+- edit trade
+- delete trade with confirmation and audit
+- add attachment
+- add override
+- assign unassigned executions if import created them
+
+TESTS:
+- list pagination tests
+- filter tests
+- custom field filter tests
+- details rendering tests
+- delete confirmation/audit tests
+
+ACCEPTANCE CRITERIA:
+- list remains usable with 100,000 synthetic records
+- filters use query engine, not frontend-only filtering
+- effective data displayed correctly
+- RTL table behavior correct
+
+DO NOT:
+- implement dashboard charts
+- move to Phase 1.13
+```
+
+---
+
+## فاز ۱.۱۳ — ماژول ژورنال: پیوست‌ها
+
+```text
+PHASE 1.13 — ATTACHMENTS MODULE
+
+GOAL:
+Implement attachment upload, preview, metadata, integrity, and linking to trades.
+
+SCOPE:
+Implement attachment handling in storage, domain, and UI.
+
+REQUIRED FEATURES:
+1. Upload
+- Support images and files.
+- Validate size and type.
+- Store file outside database.
+- Store metadata in database.
+
+2. Integrity
+- Compute blake3 hash.
+- Detect duplicate files by hash.
+- Verify integrity on read.
+
+3. Thumbnails
+- Generate image thumbnails using image crate.
+- Store thumbnail path metadata.
+
+4. Linking
+- Link attachment to trade.
+- Link types:
+  before_trade, after_trade, chart, news, other
+- One attachment can be linked to one trade in version 1.
+
+5. Preview
+- Image preview grid.
+- Zoom viewer.
+- File metadata display.
+
+TESTS:
+- upload tests
+- duplicate hash tests
+- thumbnail generation tests
+- integrity validation tests
+- link/unlink tests
+
+ACCEPTANCE CRITERIA:
+- attachments persist after backup/restore
+- corrupted file detected by hash check
+- thumbnails load quickly
+- UI is Persian RTL
+
+DO NOT:
+- implement audio field as custom field type yet; deferred to version 3
+- move to Phase 1.14
+```
+
+---
+
+## فاز ۱.۱۴ — داشبورد و آمار پایه
+
+```text
+PHASE 1.14 — DASHBOARD AND BASIC STATISTICS
+
+GOAL:
+Implement the dashboard using query engine projections.
+
+SCOPE:
+Implement dashboard UI and statistics widgets.
+
+REQUIRED WIDGETS:
+1. Summary cards
+- total trades
+- win rate
+- average R
+- total profit/loss
+- max drawdown
+
+2. Equity curve
+- Date-based equity curve using realized PnL.
+
+3. Performance breakdowns
+- by symbol
+- by strategy
+- by timeframe
+- by session
+- by weekday
+- by custom field
+
+4. Time heatmap
+- Basic heatmap by weekday/hour or session.
+
+5. Custom field stats
+- If a custom field is stat_enabled, show performance breakdown by that field.
+
+TECH:
+- Apache ECharts
+- TanStack Query
+- query engine summaries
+- no heavy raw-data recomputation on every render
+
+TESTS:
+- widget data tests
+- summary cache invalidation tests
+- custom field breakdown tests
+- RTL chart rendering tests
+
+ACCEPTANCE CRITERIA:
+- dashboard P50 < 150 ms with cache in synthetic dataset
+- dashboard P95 < 300 ms in synthetic dataset
+- custom fields appear in stats without code changes
+- charts are readable in RTL
+
+DO NOT:
+- implement insights/Ariana
+- move to Phase 1.15
+```
+
+---
+
+## فاز ۱.۱۵ — پلاگین ایمپورت متاتریدر
+
+```text
+PHASE 1.15 — METATRADER IMPORT PLUGIN
+
+GOAL:
+Implement official MetaTrader import plugin for CSV/HTML files.
+
+SCOPE:
+Create plugins/official/mt-import as an out-of-process plugin.
+
+REQUIRED FEATURES:
+1. File import
+- Import MetaTrader CSV/HTML export files.
+- Use csv crate and encoding_rs.
+- If HTML parsing needed, use a safe parser.
+
+2. Source records
+- Store raw imported rows as SourceRecord.
+- Raw data immutable.
+- Store file hash and import batch metadata.
+
+3. Mapping
+- Map broker fields to canonical fields:
+  account, symbol, direction, time, price, volume, commission, swap, profit, ticket, position id, magic, comment
+
+4. Execution creation
+- Create Execution from SourceRecord.
+- Assign Execution to Entry Leg or Exit Leg.
+- If assignment cannot be determined, mark needs_assignment.
+
+5. Duplicate detection
+- Detect duplicate imports by hash, ticket, time, symbol, volume, price where appropriate.
+- Prevent duplicate trades.
+
+6. Import report
+- Show imported count, skipped count, duplicate count, error count, needs_assignment count.
+- Provide detailed warnings in Persian.
+
+7. Permission
+- Require mt.import capability.
+- No direct database access.
+- Use kernel trade/import services.
+
+TESTS:
+- CSV import tests
+- HTML import tests
+- duplicate detection tests
+- encoding tests
+- needs_assignment tests
+- import report tests
+
+ACCEPTANCE CRITERIA:
+- at least one real MetaTrader export format imports successfully
+- raw data preserved
+- duplicates prevented
+- unassigned executions visible for user correction
+
+DO NOT:
+- implement live MT connection; deferred to version 3
+- move to Phase 1.16
+```
+
+---
+
+## فاز ۱.۱۶ — بکاپ و بازیابی
+
+```text
+PHASE 1.16 — BACKUP AND RECOVERY ENGINE
+
+GOAL:
+Implement encrypted backup and restore.
+
+SCOPE:
+Implement backup functionality in storage/security integration.
+
+REQUIRED FEATURES:
+1. Backup package
+Create a package containing:
+- manifest.json
+- encrypted database snapshot
+- attachments folder
+- checksums.json
+- settings snapshot optional
+- format_version
+
+2. Compression and encryption
+- Use zstd compression.
+- Use AES-GCM encryption.
+- Use existing KDF/key model.
+- Include authenticated metadata.
+
+3. Integrity
+- Use blake3 hashes for all files.
+- Validate integrity before restore.
+
+4. Restore
+- Restore full backup.
+- Validate format version.
+- Backup current state before restore if possible.
+- Rollback on failed restore.
+
+5. Scheduling
+- Manual backup.
+- Optional scheduled backup.
+- Backup before major migrations.
+
+6. Recovery scenarios
+Implement and document tests for:
+- corrupt database
+- interrupted transaction
+- interrupted migration
+- interrupted backup
+- missing attachment
+- wrong password
+- disk full simulation where practical
+
+TESTS:
+- backup create tests
+- backup restore tests
+- corrupted backup tests
+- wrong password tests
+- integrity tests
+- migration backup-before tests
+
+ACCEPTANCE CRITERIA:
+- encrypted backup restores fully in defined scenarios
+- backup under 30 seconds for reference dataset
+- restore under 60 seconds for reference dataset
+- no plaintext database included in backup package
+
+DO NOT:
+- implement cloud sync
+- move to Phase 1.17
+```
+
+---
+
+## فاز ۱.۱۷ — تست، پایداری و بنچمارک نسخه ۱
+
+```text
+PHASE 1.17 — VERSION 1 STABILIZATION, TESTS, AND BENCHMARKS
+
+GOAL:
+Stabilize version 1 and verify all acceptance criteria.
+
+SCOPE:
+Do not add new product features. Focus on quality, performance, recovery, and documentation.
+
+REQUIRED TASKS:
+1. Synthetic datasets
+Create generators for:
+- Dataset A: 10,000 trades
+- Dataset B: 100,000 trades with 20-30 custom fields
+- Dataset C: 100,000 trades with 40+ custom fields and many attachments metadata
+
+2. Integration tests
+- command/event flow
+- import flow
+- backup/restore flow
+- plugin crash isolation
+- custom field lifecycle
+- query/filter flow
+- security lock/unlock flow
+
+3. Property-based tests
+- R calculation invariants
+- PnL calculation invariants
+- field validation invariants
+- migration safety
+
+4. Benchmarks
+Use criterion for:
+- trade save
+- simple filter
+- combined filter
+- dashboard summary
+- import 1000 records
+- backup/restore
+
+5. E2E tests
+Use Playwright or tauri-driver for:
+- create trade fast mode
+- create trade full mode
+- add custom field
+- filter list
+- view dashboard
+- backup/restore UI flow if practical
+
+6. Crash tests
+- kill Python sidecar
+- crash sample plugin
+- verify kernel remains alive
+- verify plugin quarantine works
+
+7. Documentation
+- update all contracts
+- update acceptance criteria results
+- update deferred features tracking
+- create user-facing basic help in Persian
+
+ACCEPTANCE CRITERIA:
+- all version 1 acceptance criteria pass
+- no critical bugs open
+- performance targets met or documented with known limits
+- plugin crash does not crash app
+- data is not lost in tested failure scenarios
+- all docs are synchronized with code
+
+DO NOT:
+- implement version 2 features
+- move to version 2 until version 1 acceptance is approved
+```
+
+---
+
+# ۶) پرامپت‌های نسخه ۲
+
+---
+
+## فاز ۲.۱ — ارتقاء موتور فیلدها
+
+```text
+PHASE 2.1 — SCHEMA ENGINE UPGRADE
+
+GOAL:
+Upgrade custom fields to version 2 capabilities.
+
+NEW FIELD CAPABILITIES:
+- duration
+- simple checklist
+- image as field
+- controlled relation to another entity
+- computed field with internal controlled formulas
+- read-only field
+
+SCOPE:
+1. Extend storage/semantic types.
+2. Migrate schema safely from version 1.
+3. Add field dependency metadata for computed fields.
+4. Add relation target metadata.
+5. Add checklist item schema.
+6. Ensure new fields remain filterable/stat_enabled where appropriate.
+
+TECH:
+- aria-schema-engine
+- SQLite migrations via refinery
+- JSON Schema updates
+
+TESTS:
+- migration from v1 data
+- new field types CRUD
+- checklist value persistence
+- relation validation
+- read-only enforcement
+- computed field metadata tests
+
+ACCEPTANCE:
+- version 1 fields continue working
+- new field types render in form metadata
+- no data loss during migration
+```
+
+---
+
+## فاز ۲.۲ — موتور فرمول پایه
+
+```text
+PHASE 2.2 — BASIC FORMULA ENGINE
+
+GOAL:
+Implement internal controlled formulas for computed fields.
+
+SCOPE:
+1. Safe formula evaluation.
+2. Only internal approved functions.
+3. No arbitrary code execution.
+4. Dependency tracking between fields.
+5. Cache computed values.
+6. Invalidate on source field changes.
+7. Read-only output fields.
+
+RESTRICTIONS:
+- No user-defined arbitrary formulas yet; deferred to version 3.
+- No infinite loops.
+- No external I/O.
+
+TESTS:
+- formula evaluation tests
+- dependency invalidation tests
+- circular dependency prevention tests
+- performance tests for 10,000 records
+
+ACCEPTANCE:
+- computed fields update correctly
+- formulas are safe and deterministic
+- read-only fields cannot be edited directly
+```
+
+---
+
+## فاز ۲.۳ — ارتقاء دامنه معاملاتی
+
+```text
+PHASE 2.3 — DOMAIN UPGRADE: POSITION GROUP AND EXECUTION EDITING
+
+GOAL:
+Activate explicit Position Group and advanced Execution/Leg editing.
+
+SCOPE:
+1. Implement PositionGroup entity explicitly.
+2. Allow multiple Position Groups under one Journal Trade only where version 2 scenarios define.
+3. Maintain compatibility with version 1 implicit group.
+4. Implement merge/split Executions within Legs.
+5. Implement tree view data:
+   Trade → Position Group → Legs → Executions
+6. Independent PnL calculation per Position Group.
+7. Preserve full override/history trail.
+
+TECH:
+- aria-domain-engine
+- aria-storage-engine migrations
+- aria-query-engine group aggregations
+
+TESTS:
+- v1 compatibility tests
+- explicit group creation tests
+- group PnL tests
+- merge/split execution tests
+- history preservation tests
+
+ACCEPTANCE:
+- version 1 trades remain valid
+- position groups can be analyzed independently
+- execution edits do not lose raw or canonical history
+```
+
+---
+
+## فاز ۲.۴ — پلاگین پایتون پیشرفته
+
+```text
+PHASE 2.4 — ADVANCED PYTHON PLUGIN RUNTIME
+
+GOAL:
+Upgrade Python sidecar environment for analytics plugins.
+
+SCOPE:
+1. venv per Python plugin.
+2. Prepackaged dependencies only.
+3. No internet installation.
+4. Approved libraries:
+   - polars
+   - pandas
+   - numpy
+   - scipy
+   - matplotlib
+   - fpdf2
+   - arabic_reshaper
+   - python-bidi
+5. JSON-RPC improvements:
+   - streaming progress events
+   - cancellation
+   - structured logging
+6. Resource governance.
+7. Plugin health reporting.
+
+TESTS:
+- isolated venv tests
+- dependency manifest tests
+- RPC streaming progress tests
+- crash recovery tests
+- resource limit tests
+
+ACCEPTANCE:
+- Python plugins run isolated
+- no internet required
+- analytics plugins can use approved libraries safely
+```
+
+---
+
+## فاز ۲.۵ — آریانا پایه
+
+```text
+PHASE 2.5 — ARIANA BASIC INSIGHT ENGINE
+
+GOAL:
+Implement basic statistical pattern discovery as an official plugin.
+
+SCOPE:
+1. Implement Ariana as Python sidecar plugin.
+2. Read data only through kernel query services.
+3. Discover simple patterns with 1-2 conditions.
+4. Minimum sample size: 20 trades.
+5. Compute confidence intervals.
+6. Compare against baseline.
+7. Quality score for each pattern.
+8. Anti-hallucination rules:
+   - do not report low-sample patterns as reliable
+   - show evidence count
+   - show uncertainty
+9. Store insights using insights.write permission.
+
+TECH:
+- Python sidecar
+- polars/pandas
+- scipy
+- JSON-RPC
+- kernel query contracts
+
+TESTS:
+- synthetic dataset pattern tests
+- minimum sample tests
+- confidence interval tests
+- baseline comparison tests
+- insight persistence tests
+
+ACCEPTANCE:
+- at least 3 valid test patterns discovered from synthetic dataset
+- low-sample patterns are marked unreliable
+- insights have evidence and quality score
+```
+
+---
+
+## فاز ۲.۶ — کارت بینش
+
+```text
+PHASE 2.6 — INSIGHT CARDS UI
+
+GOAL:
+Display insights in dashboard with evidence and user feedback.
+
+SCOPE:
+1. Insight card component.
+2. Evidence panel:
+   - sample size
+   - win rate
+   - average R
+   - confidence
+   - conditions
+3. User feedback:
+   - useful
+   - not useful
+   - hide
+4. Insight status:
+   - new
+   - accepted
+   - rejected
+   - hidden
+5. Persian explanations.
+
+TESTS:
+- card rendering tests
+- feedback persistence tests
+- filter by insight status tests
+
+ACCEPTANCE:
+- insights display with evidence
+- user feedback stored
+- no insight appears without sample evidence
+```
+
+---
+
+## فاز ۲.۷ — گزارش‌های پیشرفته
+
+```text
+PHASE 2.7 — ADVANCED REPORTS
+
+GOAL:
+Implement advanced reporting with CSV and Persian PDF output.
+
+SCOPE:
+1. Report types:
+   - daily
+   - weekly
+   - monthly
+   - by strategy
+   - by symbol
+   - by custom field
+2. Combined complex filters.
+3. CSV export using Rust csv crate.
+4. PDF export via Python sidecar using:
+   - fpdf2
+   - arabic_reshaper
+   - python-bidi
+   - matplotlib charts
+5. Persian RTL PDF must be tested with Vazirmatn or compatible font.
+6. Reports generated only through kernel services.
+
+TESTS:
+- CSV export tests
+- PDF generation tests
+- Persian text shaping tests
+- chart embedding tests
+- filter combination tests
+
+ACCEPTANCE:
+- CSV opens correctly
+- PDF is readable in Persian RTL
+- reports respect current filters
+- no plugin direct database access
+```
+
+---
+
+## فاز ۲.۸ — تست و یکپارچه‌سازی نسخه ۲
+
+```text
+PHASE 2.8 — VERSION 2 INTEGRATION AND STABILIZATION
+
+GOAL:
+Stabilize version 2 and verify backward compatibility.
+
+SCOPE:
+1. Run all version 1 tests.
+2. Run version 2 tests.
+3. Benchmark with 100,000 records.
+4. Test Ariana with realistic synthetic dataset.
+5. Test Python plugin isolation.
+6. Test report exports.
+7. Update tracking docs.
+
+ACCEPTANCE:
+- all version 1 features still work
+- version 2 acceptance criteria pass
+- no critical performance regression
+- deferred features remain tracked
+```
+
+---
+
+# ۷) پرامپت‌های نسخه ۳
+
+---
+
+## فاز ۳.۱ — موتور فرمول کامل
+
+```text
+PHASE 3.1 — FULL FORMULA ENGINE
+
+GOAL:
+Implement user-defined safe formulas for computed and derived fields.
+
+SCOPE:
+1. Formula language or safe expression engine.
+2. User-defined formulas for computed fields.
+3. Derived fields based on other fields and trade metrics.
+4. Dependency graph.
+5. Cycle detection.
+6. Timeout and resource limits.
+7. Error reporting in Persian.
+8. Formula versioning.
+
+RESTRICTIONS:
+- No arbitrary code execution.
+- No file/network access.
+- No infinite loops.
+
+TESTS:
+- formula parsing tests
+- dependency graph tests
+- cycle detection tests
+- performance tests
+- invalid formula tests
+
+ACCEPTANCE:
+- user formulas run safely
+- derived fields update correctly
+- formula errors are understandable
+```
+
+---
+
+## فاز ۳.۲ — فیلدهای پیشرفته
+
+```text
+PHASE 3.2 — ADVANCED FIELD TYPES
+
+GOAL:
+Add advanced field types.
+
+NEW TYPES:
+- audio
+- file
+- computed arbitrary formula field
+- derived field
+
+SCOPE:
+1. Storage integration with attachments.
+2. Safe media preview.
+3. Metadata indexing.
+4. Formula/derived integration.
+5. Filter/stat behavior where meaningful.
+
+TESTS:
+- audio/file storage tests
+- preview tests
+- derived field update tests
+- migration tests
+
+ACCEPTANCE:
+- audio/file fields work securely
+- derived fields are consistent
+- attachments remain integrity-checked
+```
+
+---
+
+## فاز ۳.۳ — آریانا پیشرفته
+
+```text
+PHASE 3.3 — ADVANCED ARIANA
+
+GOAL:
+Upgrade Ariana to multi-condition pattern discovery with anti-overfitting controls.
+
+SCOPE:
+1. Patterns with 1-3 conditions.
+2. Stability across time windows.
+3. Multiple testing correction.
+4. Overfitting prevention.
+5. Quality scoring.
+6. Benchmark comparison.
+7. Only high-quality patterns displayed by default.
+
+TECH:
+- Python sidecar
+- polars/pandas
+- scipy
+- statistical validation rules
+
+TESTS:
+- synthetic known-pattern tests
+- random-noise non-discovery tests
+- time stability tests
+- multiple testing correction tests
+
+ACCEPTANCE:
+- at least 5 high-quality valid patterns in test dataset
+- random noise does not create false confident patterns
+- each pattern includes evidence and uncertainty
+```
+
+---
+
+## فاز ۳.۴ — مربی شخصی‌سازی‌شده
+
+```text
+PHASE 3.4 — PERSONALIZED COACH
+
+GOAL:
+Implement data-driven behavioral coach.
+
+SCOPE:
+1. Review past behavior using deterministic statistics.
+2. Provide indirect recommendations.
+3. Personalize based on user feedback.
+4. Never issue buy/sell orders.
+5. Never predict market.
+6. Show evidence for every coaching statement.
+
+OUTPUT EXAMPLES:
+- "In the last 30 trades after two consecutive losses, your average R decreased."
+- "When checklist compliance is above 80%, your win rate is higher."
+
+TESTS:
+- evidence-based message tests
+- feedback adaptation tests
+- no-trade-advice policy tests
+
+ACCEPTANCE:
+- coach messages are evidence-based
+- no direct trading signals
+- user feedback influences future message ranking
+```
+
+---
+
+## فاز ۳.۵ — تشخیص حالت انتقام
+
+```text
+PHASE 3.5 — TILT DETECTION
+
+GOAL:
+Detect possible revenge/tilt behavior and issue soft warnings.
+
+FEATURES:
+- consecutive losses
+- reduced time between trades
+- increased volume after loss
+- strategy switching
+- recorded emotions
+- SL movement after loss
+
+SCOPE:
+1. Behavioral feature extraction.
+2. Rule-based scoring first.
+3. Optional lightweight statistical model later.
+4. Soft warning, not blocking.
+5. User can dismiss or confirm.
+
+TESTS:
+- synthetic tilt scenario tests
+- false positive control tests
+- warning UI tests
+- feedback storage tests
+
+ACCEPTANCE:
+- tilt scenarios detected in tests
+- warnings are non-blocking
+- user feedback stored
+```
+
+---
+
+## فاز ۳.۶ — کانکتور زنده متاتریدر
+
+```text
+PHASE 3.6 — LIVE METATRADER CONNECTOR
+
+GOAL:
+Implement live MetaTrader connection as isolated plugin.
+
+SCOPE:
+1. Separate sidecar plugin.
+2. Receive open/close events.
+3. Sync trades into journal through official services.
+4. Preserve raw source records.
+5. Handle reconnection.
+6. Notify only through official notification system.
+7. Requires mt.live permission.
+
+RESTRICTIONS:
+- No direct database access.
+- No trade execution unless explicitly approved in future; version 3 is sync-focused.
+
+TESTS:
+- mock MT event tests
+- reconnection tests
+- duplicate prevention tests
+- sync integrity tests
+
+ACCEPTANCE:
+- live events sync without kernel crash
+- raw source preserved
+- user sees sync health status
+```
+
+---
+
+## فاز ۳.۷ — بازپخش عمومی رویدادها
+
+```text
+PHASE 3.7 — EVENT REPLAY
+
+GOAL:
+Implement controlled public event replay.
+
+SCOPE:
+1. Replay domain/integration events.
+2. Filter by time/type/source.
+3. Idempotent consumers.
+4. Dead-letter handling.
+5. Audit replay operations.
+6. Do not replay UI-only events unless explicitly persisted.
+
+TESTS:
+- replay order tests
+- duplicate consumer tests
+- partial failure tests
+- audit tests
+
+ACCEPTANCE:
+- replay works without data corruption
+- consumers remain idempotent
+- replay operations are audited
+```
+
+---
+
+## فاز ۳.۸ — داده مسیر معامله و MAE/MFE
+
+```text
+PHASE 3.8 — TRADE PATH DATA AND MAE/MFE
+
+GOAL:
+Activate reserved MAE/MFE fields when sufficient price path data exists.
+
+SCOPE:
+1. Store or import price path data where available.
+2. Calculate:
+   - mae_price
+   - mfe_price
+   - mae_amount
+   - mfe_amount
+   - mae_r
+   - mfe_r
+   - max_drawdown_inside_trade
+3. Mark trades without sufficient data as not_available.
+4. Integrate with live connector or Python analytics plugin.
+
+TESTS:
+- known path MAE/MFE tests
+- insufficient data tests
+- R consistency tests
+
+ACCEPTANCE:
+- MAE/MFE calculated correctly when data exists
+- missing data handled explicitly
+- no incorrect zero values silently shown
+```
+
+---
+
+## فاز ۳.۹ — تست و یکپارچه‌سازی نسخه ۳
+
+```text
+PHASE 3.9 — VERSION 3 INTEGRATION AND STABILIZATION
+
+GOAL:
+Stabilize version 3.
+
+SCOPE:
+1. Verify all version 1 and 2 features still work.
+2. Test advanced Ariana.
+3. Test coach policy.
+4. Test tilt detection.
+5. Test live connector with mocks.
+6. Test event replay.
+7. Benchmark with larger datasets.
+
+ACCEPTANCE:
+- all version 3 acceptance criteria pass
+- no critical regressions
+- deferred features tracked
+```
+
+---
+
+# ۸) پرامپت‌های نسخه ۴
+
+---
+
+## فاز ۴.۱ — زیرساخت بازار پلاگین
+
+```text
+PHASE 4.1 — PLUGIN MARKETPLACE INFRASTRUCTURE
+
+GOAL:
+Create controlled plugin distribution foundation.
+
+SCOPE:
+1. Local/official repository structure.
+2. Plugin packages.
+3. Digital signature verification using ed25519-dalek.
+4. Manifest security review.
+5. Version management.
+6. User ratings/feedback local storage.
+7. Install flow with explicit user approval.
+
+TESTS:
+- signature validation tests
+- invalid package tests
+- version compatibility tests
+- install/uninstall tests
+
+ACCEPTANCE:
+- only signed/approved packages install
+- user sees permissions before install
+```
+
+---
+
+## فاز ۴.۲ — سندباکس WASM
+
+```text
+PHASE 4.2 — WASM SANDBOX
+
+GOAL:
+Add WASM sandbox for lightweight plugins.
+
+SCOPE:
+1. Integrate wasmtime.
+2. Define limited host functions.
+3. Capability-based access.
+4. Resource limits.
+5. Sandboxed UI extension schemas only.
+
+TESTS:
+- sandbox escape prevention tests
+- resource limit tests
+- host function permission tests
+
+ACCEPTANCE:
+- WASM plugins run limited
+- no direct kernel/database access
+```
+
+---
+
+## فاز ۴.۳ — پلاگین‌های شخص ثالث
+
+```text
+PHASE 4.3 — THIRD-PARTY PLUGINS
+
+GOAL:
+Enable third-party plugins safely.
+
+SCOPE:
+1. Trust levels:
+   official, certified, community
+2. stricter sandbox for community plugins
+3. quarantine on suspicious behavior
+4. permission review screen
+5. local audit logs
+
+TESTS:
+- malicious sample plugin isolation tests
+- permission denial tests
+- quarantine tests
+
+ACCEPTANCE:
+- third-party plugin cannot damage kernel
+- user can disable/remove plugin
+```
+
+---
+
+## فاز ۴.۴ — همگام‌سازی
+
+```text
+PHASE 4.4 — SYNC / CLOUD BACKUP TO USER STORAGE
+
+GOAL:
+Enable encrypted backup sync to user-controlled cloud folder, not central server.
+
+SCOPE:
+1. Sync encrypted backup packages to user-selected folder.
+2. No plaintext data leaves machine.
+3. Conflict resolution simple and safe.
+4. Network access only with explicit permission.
+5. Optional WebDAV/S3-compatible destination if user configures.
+
+TESTS:
+- encryption before upload tests
+- conflict tests
+- corrupted remote package tests
+
+ACCEPTANCE:
+- no unencrypted user data synced
+- user controls destination
+```
+
+---
+
+## فاز ۴.۵ — ابزارهای سازمانی
+
+```text
+PHASE 4.5 — ORGANIZATIONAL TOOLS
+
+GOAL:
+Implement tax report, prop firm tracker, and economic calendar plugins.
+
+SCOPE:
+1. Tax report plugin:
+   - configurable rules
+   - export for accountant
+   - no legal advice claim
+2. Prop firm tracker:
+   - prop rules
+   - drawdown limits
+   - consistency rules
+   - alerts
+3. Economic calendar:
+   - local import or user-provided source
+   - reminders only, not trade advice
+
+TESTS:
+- tax calculation config tests
+- prop rule breach tests
+- calendar reminder tests
+
+ACCEPTANCE:
+- tools work as plugins
+- no kernel changes required
+```
+
+---
+
+## فاز ۴.۶ — جستجوی تمام‌متن
+
+```text
+PHASE 4.6 — FULL-TEXT SEARCH
+
+GOAL:
+Implement advanced full-text search over notes and tags.
+
+SCOPE:
+1. Use SQLite FTS5 first.
+2. Persian normalization.
+3. Index notes, tags, lessons, insights.
+4. Fast search under 500 ms target.
+5. Highlight results in UI.
+
+TESTS:
+- Persian search tests
+- indexing tests
+- performance tests
+
+ACCEPTANCE:
+- search returns relevant Persian results quickly
+- indexing does not block UI
+```
+
+---
+
+## فاز ۴.۷ — نصب خودکار وابستگی پایتون
+
+```text
+PHASE 4.7 — PYTHON DEPENDENCY INSTALLATION WITH USER APPROVAL
+
+GOAL:
+Allow optional Python dependency installation with strict controls.
+
+SCOPE:
+1. Only with explicit user approval.
+2. Hash verification.
+3. Allowlist policy.
+4. Audit logs.
+5. Offline fallback remains available.
+
+TESTS:
+- approval flow tests
+- hash mismatch tests
+- allowlist tests
+
+ACCEPTANCE:
+- no silent installation
+- user sees package name/version/hash
+```
+
+---
+
+## فاز ۴.۸ — تست و یکپارچه‌سازی نسخه ۴
+
+```text
+PHASE 4.8 — VERSION 4 INTEGRATION AND STABILIZATION
+
+GOAL:
+Stabilize version 4 ecosystem features.
+
+SCOPE:
+1. Test marketplace.
+2. Test WASM sandbox.
+3. Test third-party isolation.
+4. Test sync encryption.
+5. Test organizational plugins.
+6. Test full-text search performance.
+7. Verify all previous versions remain stable.
+
+ACCEPTANCE:
+- ecosystem features work without compromising kernel stability
+- security tests pass
+```
+
+---
+
+# ۹) پرامپت‌های نسخه ۵
+
+---
+
+## فاز ۵.۱ — نسخه موبایل
+
+```text
+PHASE 5.1 — MOBILE VERSION
+
+GOAL:
+Create mobile companion app for viewing and quick journaling.
+
+SCOPE:
+1. Use Tauri 2 mobile support or equivalent cross-platform approach sharing Rust core.
+2. Responsive Persian RTL UI.
+3. Quick trade entry.
+4. View dashboard summaries.
+5. Sync with desktop via encrypted backup packages.
+6. Offline-first.
+
+TESTS:
+- mobile UI tests
+- sync tests
+- offline mode tests
+
+ACCEPTANCE:
+- Android and iOS targets build where toolchains available
+- sync does not expose plaintext data
+- quick entry works offline
+```
+
+---
+
+## فاز ۵.۲ — بهینه‌سازی عملکرد نهایی
+
+```text
+PHASE 5.2 — FINAL PERFORMANCE OPTIMIZATION
+
+GOAL:
+Optimize for 1,000,000 records.
+
+SCOPE:
+1. Partitioning/logical archiving strategy.
+2. Yearly archive support.
+3. Summary table optimization.
+4. Query plan analysis.
+5. Memory optimization.
+6. Virtualized lists.
+7. Lazy loading.
+
+TESTS:
+- 1,000,000 synthetic record benchmark
+- archive/restore tests
+- memory usage tests
+
+ACCEPTANCE:
+- app remains usable with 1,000,000 records
+- common queries stay within acceptable targets
+```
+
+---
+
+## فاز ۵.۳ — تکمیل مستندات
+
+```text
+PHASE 5.3 — DOCUMENTATION COMPLETION
+
+GOAL:
+Complete user and developer documentation.
+
+SCOPE:
+1. Persian user manual.
+2. Plugin development guide.
+3. Python plugin guide.
+4. Security model explanation.
+5. Backup/restore guide.
+6. FAQ.
+7. Video script outlines optional.
+
+ACCEPTANCE:
+- docs match final implementation
+- all contracts documented
+- plugin examples work
+```
+
+---
+
+## فاز ۵.۴ — رفع باگ‌های نهایی
+
+```text
+PHASE 5.4 — FINAL BUG FIXING
+
+GOAL:
+Fix all known bugs before release.
+
+SCOPE:
+1. Triage all known issues.
+2. Fix critical/high bugs.
+3. Add regression tests.
+4. Verify recovery scenarios.
+5. Verify plugin isolation scenarios.
+
+ACCEPTANCE:
+- no known critical bugs
+- regression tests added
+```
+
+---
+
+## فاز ۵.۵ — انتشار عمومی
+
+```text
+PHASE 5.5 — PUBLIC RELEASE PACKAGING
+
+GOAL:
+Prepare signed installers and release packages.
+
+SCOPE:
+1. Windows installer.
+2. macOS package where supported.
+3. Linux package where supported.
+4. Code signing if certificates available.
+5. Release notes in Persian.
+6. Update policy documentation.
+7. Backup/restore tested on clean machines.
+
+ACCEPTANCE:
+- installers work on clean reference systems
+- app launches and passes smoke tests
+- release is signed or explicitly unsigned with warning policy
+```
+
+---
+
+# ۱۰) پرامپت تکمیلی برای جلوگیری از خطاهای رایج هوش مصنوعی
+
+بعد از پرامپت مادر، می‌توانید این پرامپت را هم یک‌بار ارسال کنید:
+
+```text
+AI ERROR PREVENTION PROMPT
+
+Before implementing any phase, you must obey these rules:
+
+1. Do not invent new engines.
+2. Do not invent new abstractions unless required by a phase contract.
+3. Do not change aria-contracts backward compatibility.
+4. Do not let plugins access SQLite directly.
+5. Do not store secrets in logs.
+6. Do not use network calls unless phase explicitly allows.
+7. Do not delete user data destructively.
+8. Do not hard-delete custom fields that have values.
+9. Do not use raw SQL from plugins.
+10. Do not render plugin React components directly in version 1.
+11. Do not calculate R from moved stop loss; use initial stop loss unless manual risk basis is set.
+12. Do not include unassigned executions in PnL or R.
+13. Do not show low-sample patterns as reliable insights.
+14. Do not give buy/sell signals in coach features.
+15. Do not move to next phase.
+
+If any phase conflicts with these rules, stop and record the conflict in docs/ASSUMPTIONS.md, then choose the safest interpretation consistent with Tahan Document Version 5.
+```
+
+---
+
+# ۱۱) ترتیب نهایی ارسال پرامپت‌ها
+
+ترتیب پیشنهادی و قطعی:
+
+```text
+1. MASTER PROMPT
+2. AI ERROR PREVENTION PROMPT
+3. PHASE QUALITY REVIEW PROMPT explanation only; use after each phase
+4. PHASE 0
+5. PHASE 1.1
+6. PHASE 1.2
+7. PHASE 1.3
+8. PHASE 1.4
+9. PHASE 1.5
+10. PHASE 1.6
+11. PHASE 1.7
+12. PHASE 1.8
+13. PHASE 1.9
+14. PHASE 1.10
+15. PHASE 1.11
+16. PHASE 1.12
+17. PHASE 1.13
+18. PHASE 1.14
+19. PHASE 1.15
+20. PHASE 1.16
+21. PHASE 1.17
+22. PHASE 2.1
+23. PHASE 2.2
+24. PHASE 2.3
+25. PHASE 2.4
+26. PHASE 2.5
+27. PHASE 2.6
+28. PHASE 2.7
+29. PHASE 2.8
+30. PHASE 3.1
+31. PHASE 3.2
+32. PHASE 3.3
+33. PHASE 3.4
+34. PHASE 3.5
+35. PHASE 3.6
+36. PHASE 3.7
+37. PHASE 3.8
+38. PHASE 3.9
+39. PHASE 4.1
+40. PHASE 4.2
+41. PHASE 4.3
+42. PHASE 4.4
+43. PHASE 4.5
+44. PHASE 4.6
+45. PHASE 4.7
+46. PHASE 4.8
+47. PHASE 5.1
+48. PHASE 5.2
+49. PHASE 5.3
+50. PHASE 5.4
+51. PHASE 5.5
+```
+
+---
+
+# ۱۲) مقایسه روش‌های ارسال و توصیه نهایی
+
+| روش | مزایا | معایب | توصیه |
+|---|---|---|---:|
+| ارسال کل پرامپت‌ها در یک پیام | سریع به نظر می‌رسد | هوش مصنوعی دچار فراموشی، خطا و پرش بین فازها می‌شود | اصلاً توصیه نمی‌شود |
+| ارسال پرامپت مادر سپس همه فازها به‌صورت فهرست | دید کلی می‌دهد | هنوز خطر اجرای سطحی وجود دارد | متوسط |
+| ارسال پرامپت مادر، سپس فاز به فاز، سپس کنترل کیفیت بعد از هر فاز | بیشترین دقت، کمترین خطا، قابل اشکال‌زدایی | زمان‌برتر | بهترین گزینه |
+
+## گزینه برتر
+
+**ارسال پرامپت مادر + پرامپت جلوگیری از خطا + سپس فاز به فاز + کنترل کیفیت بعد از هر فاز**
+
+### دلیل برتری:
+
+1. هوش مصنوعی در هر لحظه فقط روی یک محدوده مشخص تمرکز می‌کند.
+2. قراردادها در هر فاز حفظ می‌شوند.
+3. خطاها زود کشف می‌شوند.
+4. معماری خودسرانه تغییر نمی‌کند.
+5. هر فاز قبل از فاز بعدی قابل تست است.
+6. احتمال تولید نرم‌افزار پایدار بسیار بالاتر می‌رود.
+
+---
+
+# جمع‌بندی نهایی
+
+برای پروژه **ژورنال طهان / کرنل آریا**:
+
+- مبنای نهایی: **سند نسخه ۵**
+- معماری: **موتورهای مجزا + قرارداد-محور + پلاگین‌های کنترل‌شده**
+- استک: **Rust + Tauri 2 + SQLite/SQLCipher + React/TypeScript + Python Sidecar**
+- روش اجرا: **فاز به فاز، قرارداد به قرارداد، تست به تست**
+- هدف: **ساخت نرم‌افزاری پایدار، آفلاین، فارسی، راست‌به‌چپ، امن و قابل توسعه برای سال‌ها**
+
+این پرامپت‌ها به‌گونه‌ای طراحی شده‌اند که هوش مصنوعی بتواند با کمترین ابهام، کمترین خطا و بیشترین پایبندی به معماری، پروژه را از فاز ۰ تا فاز ۵.۵ پیاده‌سازی کند.
+

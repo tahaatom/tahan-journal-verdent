@@ -1,0 +1,33 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+*.local
+
+# Tauri
+apps/tahan-desktop/gen/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / local data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.key
+.env
+.env.*
+
+# Logs
+*.log
+logs/

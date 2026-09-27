@@ -1,0 +1,10 @@
+[package]
+name = "aria-domain-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Domain engine of the Aria Kernel (trading domain model, commands, events, R calculation)"
+
+[dependencies]

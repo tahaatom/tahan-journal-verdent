@@ -1,0 +1,10 @@
+[package]
+name = "aria-query-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Query engine of the Aria Kernel (filters, aggregations, projections, caching)"
+
+[dependencies]

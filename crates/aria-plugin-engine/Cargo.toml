@@ -1,0 +1,10 @@
+[package]
+name = "aria-plugin-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Plugin engine of the Aria Kernel (manifest validation, registry, permissions, lifecycle, quarantine)"
+
+[dependencies]

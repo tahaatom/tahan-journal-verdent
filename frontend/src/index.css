@@ -1,0 +1,39 @@
+@import "vazirmatn/Vazirmatn-font-face.css";
+
+:root {
+  --color-surface: #f8fafc;
+  --color-surface-alt: #f1f5f9;
+  --color-surface-raised: #ffffff;
+  --color-border: #e2e8f0;
+  --color-accent: #0ea5e9;
+  --color-accent-soft: #e0f2fe;
+  --color-text-main: #0f172a;
+  --color-text-muted: #64748b;
+  --color-danger: #ef4444;
+  --color-success: #22c55e;
+}
+
+.dark {
+  --color-surface: #0f172a;
+  --color-surface-alt: #1e293b;
+  --color-surface-raised: #273449;
+  --color-border: #334155;
+  --color-accent: #38bdf8;
+  --color-accent-soft: #0c4a6e;
+  --color-text-main: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-danger: #f87171;
+  --color-success: #4ade80;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: "Vazirmatn", Tahoma, sans-serif;
+  background-color: var(--color-surface);
+  color: var(--color-text-main);
+}

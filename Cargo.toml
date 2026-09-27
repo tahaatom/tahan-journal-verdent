@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aria-contracts",
+    "crates/aria-foundation-engine",
+    "crates/aria-storage-engine",
+    "crates/aria-security-engine",
+    "crates/aria-schema-engine",
+    "crates/aria-domain-engine",
+    "crates/aria-plugin-engine",
+    "crates/aria-runtime-engine",
+    "crates/aria-query-engine",
+    "crates/aria-ui-engine",
+    "apps/tahan-desktop",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Tahan Journal Team"]
+repository = "https://github.com/tahaatom/tahan-journal-verdent"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
+tracing-appender = "0.2"
+dirs = "5"
+semver = { version = "1", features = ["serde"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+argon2 = "0.5"
+aes-gcm = "0.10"
+zeroize = { version = "1", features = ["zeroize_derive"] }
+secrecy = { version = "0.8", features = ["alloc"] }
+blake3 = "1"
+zstd = "0.13"
+image = "0.25"
+csv = "1"
+encoding_rs = "0.8"
+sysinfo = "0.31"
+proptest = "1"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
