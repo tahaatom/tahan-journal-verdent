@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tahan-journal.local/contracts/plugin-manifest.schema.json",
+  "title": "Tahan Journal Plugin Manifest",
+  "description": "قرارداد مانیفست پلاگین کرنل آریا — نسخه ۱",
+  "type": "object",
+  "required": ["id", "name", "version", "api_version", "entrypoint", "runtime_mode", "kernel_version_range", "api_version_range"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$",
+      "description": "شناسه یکتای پلاگین"
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "$ref": "#/$defs/semver" },
+    "api_version": { "$ref": "#/$defs/semver" },
+    "entrypoint": { "type": "string", "minLength": 1 },
+    "runtime_mode": {
+      "type": "string",
+      "enum": ["out_of_process", "in_process_trusted"],
+      "description": "درون‌فرایند فقط برای ماژول‌های مورد اعتماد داخلی"
+    },
+    "kernel_version_range": { "$ref": "#/$defs/semverRange" },
+    "api_version_range": { "$ref": "#/$defs/semverRange" },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["trades.read", "trades.write", "trades.delete", "fields.read", "fields.define", "attachments.read", "attachments.write", "stats.read", "ui.widget", "ui.page", "notifications.show", "backup.create", "backup.restore", "mt.import", "mt.live", "insights.write", "network.access"] }
+    },
+    "permissions": { "type": "array", "items": { "type": "string" } },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_memory_mb": { "type": "integer", "minimum": 32, "maximum": 8192 },
+        "max_cpu_percent": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      }
+    },
+    "dependencies": { "type": "array", "items": { "type": "string" } },
+    "locales": { "type": "array", "items": { "type": "string" } },
+    "ui_extension_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id", "schema"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["dashboard_widget", "report_page", "command_menu", "form_field", "plugin_settings"] },
+          "id": { "type": "string" },
+          "schema": { "type": "object", "description": "اسکیمای اعلانی رندر — کد دلخواه مجاز نیست" }
+        }
+      }
+    },
+    "description": { "type": "string" },
+    "author": { "type": "string" },
+    "license": { "type": "string" },
+    "trust_level": { "type": "string", "enum": ["official", "certified", "community"] },
+    "health_policy": {
+      "type": "object",
+      "properties": {
+        "max_consecutive_crashes": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "restart_backoff_secs": { "type": "integer", "minimum": 1, "maximum": 300 }
+      }
+    }
+  },
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
+    "semverRange": { "type": "string", "minLength": 1 }
+  }
+}

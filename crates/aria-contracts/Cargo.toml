@@ -8,3 +8,9 @@ repository.workspace = true
 description = "Public contracts layer of the Aria Kernel (command/event envelopes, plugin manifest, RPC, service traits, versioning)"
 
 [dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+semver = { workspace = true }
+thiserror = { workspace = true }
