@@ -33,7 +33,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"]
 tracing-appender = "0.2"
 dirs = "5"
 semver = { version = "1", features = ["serde"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl", "serde_json"] }
 argon2 = "0.5"
 aes-gcm = "0.10"
 zeroize = { version = "1", features = ["zeroize_derive"] }

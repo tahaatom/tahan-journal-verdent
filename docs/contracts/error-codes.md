@@ -8,7 +8,7 @@
 | بازه | موتور | وضعیت |
 |---|---|---|
 | 1000–1099 | aria-foundation-engine | فعال |
-| 1100–1199 | aria-storage-engine | رزرو (فاز ۱.۳) |
+| 1100–1199 | aria-storage-engine | فعال |
 | 1200–1299 | aria-security-engine | رزرو (فاز ۱.۴) |
 | 1300–1399 | aria-schema-engine | رزرو (فاز ۱.۵) |
 | 1400–1499 | aria-domain-engine | رزرو (فاز ۱.۶) |
@@ -27,6 +27,20 @@
 | 1004 | `io` | `error.foundation.io` | خطای ورودی/خروجی عمومی |
 | 1005 | `invalid_date_time` | `error.foundation.invalid_date_time` | تاریخ/زمان نامعتبر |
 | 1006 | `invalid_config_value` | `error.foundation.invalid_config_value` | مقدار پیکربندی نامعتبر |
+
+### موتور ذخیره‌سازی (1100–1199)
+
+| کد | واریانت ماشین‌خوان | کلید پیام فارسی | توضیح |
+|---|---|---|---|
+| 1101 | `db_open_failed` | `error.storage.open_failed` | بازکردن/رمزگشایی پایگاه‌داده ناموفق |
+| 1102 | `db_migration_failed` | `error.storage.migration_failed` | مهاجرت نسخه‌دار ناموفق |
+| 1103 | `db_query_failed` | `error.storage.query_failed` | خطای پرس‌وجو |
+| 1104 | `db_integrity_failed` | `error.storage.integrity_failed` | شکست بررسی صحت |
+| 1105 | `db_not_found` | `error.storage.not_found` | موجودیت یافت نشد |
+| 1106 | `db_constraint_violation` | `error.storage.constraint_violation` | نقض محدودیت |
+| 1107 | `db_transaction_failed` | `error.storage.transaction_failed` | تراکنش ناموفق (rollback شد) |
+| 1108 | `db_backup_error` | `error.storage.backup_error` | خطای بکاپ |
+| 1109 | `db_attachment_error` | `error.storage.attachment_error` | خطای پیوست |
 
 ## قواعد
 
