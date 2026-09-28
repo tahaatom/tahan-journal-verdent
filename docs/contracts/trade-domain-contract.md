@@ -39,3 +39,9 @@
 | Override Ledger | مقدار قبلی/جدید، دلیل، زمان، منبع، اولویت، بازگشت‌پذیری |
 | Effective | خروجی نهایی برای نمایش/فیلتر/آمار = canonical + overrides |
 | Analytical Projection | جدول‌های خلاصه و کش — بازتولیدشدنی، منبع حقیقت نیست |
+
+## پیاده‌سازی (فاز ۱.۶)
+
+- کرت `aria-domain-engine`: `model.rs` (مدل)، `commands.rs` (۱۱ دستور)، `events.rs` (کارخانه رویداد + outbox)،
+  `risk.rs` (محاسبه R قطعی)، `service.rs` (اجرای اتمیک دستورها، داده مؤثر، بازمحاسبه)، `error.rs` (کدهای ۱۴۰۱–۱۴۱۰).
+- تصمیم‌های تکمیلی: فرضیات A-011 تا A-014 در `docs/ASSUMPTIONS.md`.

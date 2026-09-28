@@ -121,6 +121,18 @@ dependencies = [
 [[package]]
 name = "aria-domain-engine"
 version = "0.1.0"
+dependencies = [
+ "aria-contracts",
+ "aria-storage-engine",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "aria-foundation-engine"

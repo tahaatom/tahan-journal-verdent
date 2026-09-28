@@ -11,7 +11,7 @@
 | 1100–1199 | aria-storage-engine | فعال |
 | 1200–1299 | aria-security-engine | فعال |
 | 1300–1399 | aria-schema-engine | فعال |
-| 1400–1499 | aria-domain-engine | رزرو (فاز ۱.۶) |
+| 1400–1499 | aria-domain-engine | فعال |
 | 1500–1599 | aria-plugin-engine | رزرو (فاز ۱.۷) |
 | 1600–1699 | aria-runtime-engine | رزرو (فاز ۱.۸) |
 | 1700–1799 | aria-query-engine | رزرو (فاز ۱.۹) |
@@ -69,6 +69,21 @@
 | 1306 | `unknown_option_value` | `error.schema.unknown_option` | گزینه ناشناخته برای فیلد select |
 | 1307 | `field_has_data` | `error.schema.field_has_data` | عملیات مخرب روی فیلد دارای داده ممنوع |
 | 1308 | `schema_storage_error` | `error.schema.storage_error` | خطای ذخیره‌سازی لایه اسکیما |
+
+### موتور دامنه (1400–1499)
+
+| کد | واریانت ماشین‌خوان | کلید پیام فارسی | توضیح |
+|---|---|---|---|
+| 1401 | `trade_not_found` | `error.domain.trade_not_found` | معامله یافت نشد (یا حذف نرم شده) |
+| 1402 | `account_not_found` | `error.domain.account_not_found` | حساب یافت نشد |
+| 1403 | `symbol_not_found` | `error.domain.symbol_not_found` | نماد یافت نشد |
+| 1404 | `invalid_trade_data` | `error.domain.invalid_data` | داده معامله/دستور نامعتبر |
+| 1405 | `leg_not_found` | `error.domain.leg_not_found` | پا یافت نشد |
+| 1406 | `execution_not_found` | `error.domain.execution_not_found` | اجرا یافت نشد |
+| 1407 | `assignment_conflict` | `error.domain.assignment_conflict` | تضاد تخصیص اجرا به پا |
+| 1408 | `override_error` | `error.domain.override_error` | بازنویسی ناموجود یا بازگشت‌ناپذیر |
+| 1409 | `attachment_not_found` | `error.domain.attachment_not_found` | پیوست یافت نشد |
+| 1410 | `domain_storage_error` | `error.domain.storage_error` | خطای ذخیره‌سازی لایه دامنه |
 
 ## قواعد
 

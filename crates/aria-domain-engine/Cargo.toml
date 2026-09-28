@@ -8,3 +8,15 @@ repository.workspace = true
 description = "Domain engine of the Aria Kernel (trading domain model, commands, events, R calculation)"
 
 [dependencies]
+aria-contracts = { path = "../aria-contracts" }
+aria-storage-engine = { path = "../aria-storage-engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+rusqlite = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
