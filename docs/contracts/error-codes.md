@@ -9,8 +9,8 @@
 |---|---|---|
 | 1000–1099 | aria-foundation-engine | فعال |
 | 1100–1199 | aria-storage-engine | فعال |
-| 1200–1299 | aria-security-engine | رزرو (فاز ۱.۴) |
-| 1300–1399 | aria-schema-engine | رزرو (فاز ۱.۵) |
+| 1200–1299 | aria-security-engine | فعال |
+| 1300–1399 | aria-schema-engine | فعال |
 | 1400–1499 | aria-domain-engine | رزرو (فاز ۱.۶) |
 | 1500–1599 | aria-plugin-engine | رزرو (فاز ۱.۷) |
 | 1600–1699 | aria-runtime-engine | رزرو (فاز ۱.۸) |
@@ -56,6 +56,19 @@
 | 1208 | `kdf_failed` | `error.security.kdf_failed` | شکست Argon2id یا قالب هش |
 | 1209 | `audit_error` | `error.security.audit_error` | خطای ثبت/خواندن حسابرسی |
 | 1210 | `malformed_vault_record` | `error.security.malformed_vault_record` | رکورد گاوصندوق خراب/نسخه ناشناخته |
+
+### موتور فیلدهای سفارشی (1300–1399)
+
+| کد | واریانت ماشین‌خوان | کلید پیام فارسی | توضیح |
+|---|---|---|---|
+| 1301 | `field_not_found` | `error.schema.field_not_found` | فیلد یافت نشد |
+| 1302 | `duplicate_technical_key` | `error.schema.duplicate_technical_key` | کلید فنی تکراری |
+| 1303 | `invalid_field_definition` | `error.schema.invalid_definition` | تعریف فیلد نامعتبر |
+| 1304 | `invalid_field_value` | `error.schema.invalid_value` | مقدار نامعتبر برای فیلد |
+| 1305 | `field_type_change_forbidden` | `error.schema.type_change_forbidden` | تغییر نوع فیلد دارای داده ممنوع |
+| 1306 | `unknown_option_value` | `error.schema.unknown_option` | گزینه ناشناخته برای فیلد select |
+| 1307 | `field_has_data` | `error.schema.field_has_data` | عملیات مخرب روی فیلد دارای داده ممنوع |
+| 1308 | `schema_storage_error` | `error.schema.storage_error` | خطای ذخیره‌سازی لایه اسکیما |
 
 ## قواعد
 
