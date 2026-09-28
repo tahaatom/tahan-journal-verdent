@@ -8,3 +8,12 @@ repository.workspace = true
 description = "UI engine of the Aria Kernel (declarative UI extension registry, form metadata)"
 
 [dependencies]
+aria-contracts = { path = "../aria-contracts" }
+aria-plugin-engine = { path = "../aria-plugin-engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+uuid = { workspace = true }

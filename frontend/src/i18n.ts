@@ -6,6 +6,8 @@ const fa = {
     app: {
       title: "ژورنال طهان",
       subtitle: "کرنل آریا",
+      kernelReady: "هسته متصل است",
+      kernelClosed: "هسته متصل نیست",
     },
     nav: {
       dashboard: "داشبورد",
@@ -16,8 +18,66 @@ const fa = {
       backup: "بکاپ",
       settings: "تنظیمات",
     },
+    page: {
+      dashboard: "داشبورد",
+      journal: "ژورنال معاملات",
+      trades: "لیست معاملات",
+      fields: "مدیریت فیلدهای سفارشی",
+      plugins: "سلامت پلاگین‌ها",
+      backup: "پشتیبان‌گیری و بازیابی",
+      settings: "تنظیمات",
+    },
     placeholder: {
-      mainArea: "محتوای اصلی این بخش در فازهای بعدی پیاده‌سازی می‌شود.",
+      journal: "ثبت معامله در فاز ۱.۱۱ اضافه می‌شود.",
+      trades: "لیست معاملات پس از ثبت اولین معامله نمایش داده می‌شود.",
+      fields: "مدیریت فیلدهای سفارشی در فازهای بعدی فعال می‌شود.",
+      plugins: "پلاگینی نصب نشده است. افزونه‌ها فقط به‌صورت اعلانی اجرا می‌شوند.",
+      backup: "پشتیبان‌گیری در فاز ۱.۱۶ اضافه می‌شود.",
+    },
+    dashboard: {
+      totalTrades: "کل معاملات",
+      closedTrades: "معاملات بسته",
+      winRate: "نرخ برد",
+      avgR: "میانگین R",
+      totalPnl: "سود و زیان کل",
+      maxDrawdown: "حداکثر افت سرمایه",
+      empty: "هنوز آماری برای نمایش وجود ندارد. اولین معامله خود را ثبت کنید.",
+    },
+    state: {
+      errorTitle: "خطایی رخ داد",
+      retry: "تلاش دوباره",
+      emptyTitle: "چیزی اینجا نیست",
+      loading: "در حال بارگذاری…",
+    },
+    palette: {
+      open: "پالت فرمان (Ctrl+K)",
+      placeholder: "جست‌وجوی فرمان…",
+      noResults: "فرمانی یافت نشد",
+      openNav: "رفتن به",
+      toggleTheme: "تغییر روشن/تاریک",
+      close: "بستن",
+    },
+    theme: {
+      light: "روشن",
+      dark: "تاریک",
+    },
+    extensions: {
+      dashboardWidgets: "ویجت‌های افزونه",
+      noneInstalled: "افزونه‌ای برای این بخش نصب نشده است.",
+    },
+    error: {
+      ui: {
+        invalid_schema: "اسکیمای اعلانی نامعتبر است",
+        duplicate_extension: "افزونه UI تکراری است",
+        extension_not_found: "افزونه UI یافت نشد",
+        injection_denied: "تزریق کامپوننت در نسخه ۱ ممنوع است",
+      },
+      query: {
+        invalid_query: "پرس‌وجوی نامعتبر",
+        budget_exceeded: "بودجه پرس‌وجو فراتر رفت",
+        field_not_queryable: "فیلد سفارشی برای پرس‌وجو مجاز نیست",
+        storage_error: "خطای ذخیره‌سازی",
+      },
     },
   },
 };

@@ -14,6 +14,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+aria-storage-engine = { path = "../../crates/aria-storage-engine" }
+aria-query-engine = { path = "../../crates/aria-query-engine" }
+aria-ui-engine = { path = "../../crates/aria-ui-engine" }
 
 [features]
 default = []

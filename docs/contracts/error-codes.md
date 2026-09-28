@@ -14,8 +14,8 @@
 | 1400–1499 | aria-domain-engine | فعال |
 | 1500–1599 | aria-plugin-engine | فعال |
 | 1600–1699 | aria-runtime-engine | رزرو (فاز ۱.۸) |
-| 1700–1799 | aria-query-engine | رزرو (فاز ۱.۹) |
-| 1800–1899 | aria-ui-engine | رزرو (فاز ۱.۱۰) |
+| 1700–1799 | aria-query-engine | فعال (فاز ۱.۹) |
+| 1800–1899 | aria-ui-engine | فعال (فاز ۱.۱۰) |
 
 ## کدهای فعلی موتور پایه
 
@@ -108,6 +108,15 @@
 | 1702 | `budget_exceeded` | `error.query.budget_exceeded` | فراتر رفت از بودجه پرس‌وجو (اندازه صفحه > ۲۰۰ یا گام‌های ماشین مجازی) |
 | 1703 | `field_not_queryable` | `error.query.field_not_queryable` | فیلد سفارشی ناموجود، غیرفعال یا بدون مجوز فیلتر/آمار |
 | 1704 | `query_storage_error` | `error.query.storage_error` | خطای ذخیره‌سازی زیرین موتور پرس‌وجو |
+
+### موتور رابط کاربری (1800–1899)
+
+| کد | واریانت ماشین‌خوان | کلید پیام فارسی | توضیح |
+|---|---|---|---|
+| 1801 | `invalid_ui_schema` | `error.ui.invalid_schema` | اسکیمای اعلانی نامعتبر (فقدان type رشته‌ای، عنوان خالی و …) |
+| 1802 | `duplicate_ui_extension` | `error.ui.duplicate_extension` | شناسه افزونه تکراری در یک نقطه اعلانی |
+| 1803 | `ui_extension_not_found` | `error.ui.extension_not_found` | افزونه UI درخواستی یافت نشد |
+| 1804 | `ui_injection_denied` | `error.ui.injection_denied` | نوع خارج از فهرست سفید یا کلید تزریق در اسکیما — نسخه ۱ کد اجرایی نمی‌پذیرد |
 
 ## قواعد
 

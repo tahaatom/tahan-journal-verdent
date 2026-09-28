@@ -41,3 +41,22 @@
 - محدوده نسخه ۱: بدون اجرای فرایند جانبی — راه‌اندازی real-time و ناظر فرایند در فاز ۱.۸ (موتور اجرا) پیاده می‌شود؛
   `start/stop` در این فاز فقط وضعیت رجیستری و رویدادها را مدیریت می‌کنند و `runtime_limits` قرارداد گذار به موتور اجراست.
 - تصمیم‌های تکمیلی: فرضیات A-015 تا A-019 در `docs/ASSUMPTIONS.md`.
+
+## پیاده‌سازی (فاز ۱.۱۰ — موتور UI)
+
+- کرت `aria-ui-engine`: `registry.rs` (رجیستری افزونه‌های اعلانی با کلید یکتایی
+  `(kind, id)`، ثبت از مانیفست، حذف گروهی پلاگین)، `render.rs` (نگهبان رندر:
+  فهرست سفید انواع برای هر نقطه + رد بازگشتی کلیدهای ممنوع)، `error.rs` (کدهای ۱۸۰۱–۱۸۰۴).
+- انواع سفید-لیست هر نقطه: `dashboard_widget` (stat/table/chart_line/chart_bar/text/divider/list)،
+  `report_page` (table/chart_line/chart_bar/text)، `command_menu` (command)،
+  `form_field` (text/number/select/boolean/date/textarea)، `plugin_settings` (text/number/boolean).
+- کلیدهای ممنوع (هر عمق): `component`، `jsx`، `script`، `handler`، `on_click`/`onClick`،
+  `eval`، `innerHTML` — تخلف → خطای ۱۸۰۴ (تزریق ممنوع).
+- پوسته Tauri (`apps/tahan-desktop/src/main.rs`): پل IPC امن با دستورات
+  allowlist (`app_info`, `kernel_status`, `kernel_open`, `query_trades`, `core_stats`,
+  `dashboard_summary`, `stat_fields`, `ui_extensions`) — هیچ SQL خام از سمت UI؛
+  CSP محدود در `tauri.conf.json`.
+- فرانت‌اند: آینه TS نگهبان (`extensions.ts`) به‌عنوان دفاع در عمق؛ مرجع نهایی
+  اعتبارسنجی همیشه کرنل است. رندر افزونه‌ها فقط با کامپوننت‌های ثابت
+  (`DeclarativeWidget`) — ساخت کامپوننت از اسکیما ساختاراً ناممکن است.
+- تصمیم‌های تکمیلی: فرضیات A-025 و A-026 در `docs/ASSUMPTIONS.md`.

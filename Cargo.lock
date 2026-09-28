@@ -240,6 +240,15 @@ dependencies = [
 [[package]]
 name = "aria-ui-engine"
 version = "0.1.0"
+dependencies = [
+ "aria-contracts",
+ "aria-plugin-engine",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "arrayvec"
@@ -3494,6 +3503,9 @@ dependencies = [
 name = "tahan-desktop"
 version = "0.1.0"
 dependencies = [
+ "aria-query-engine",
+ "aria-storage-engine",
+ "aria-ui-engine",
  "serde",
  "serde_json",
  "tauri",
