@@ -8,3 +8,18 @@ repository.workspace = true
 description = "Security engine of the Aria Kernel (Argon2id, AES-GCM, key management, auto-lock, audit)"
 
 [dependencies]
+aria-contracts = { path = "../aria-contracts" }
+aria-storage-engine = { path = "../aria-storage-engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+argon2 = "0.5"
+aes-gcm = "0.10"
+zeroize = { workspace = true }
+rusqlite = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

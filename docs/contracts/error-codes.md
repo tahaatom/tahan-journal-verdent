@@ -42,6 +42,21 @@
 | 1108 | `db_backup_error` | `error.storage.backup_error` | خطای بکاپ |
 | 1109 | `db_attachment_error` | `error.storage.attachment_error` | خطای پیوست |
 
+### موتور امنیت (1200–1299)
+
+| کد | واریانت ماشین‌خوان | کلید پیام فارسی | توضیح |
+|---|---|---|---|
+| 1201 | `decryption_failed` | `error.security.decryption_failed` | رمزگشایی/احراز AES-GCM شکست خورد |
+| 1202 | `encryption_failed` | `error.security.encryption_failed` | رمزنگاری ناموفق |
+| 1203 | `weak_password` | `error.security.weak_password` | نقض سیاست گذرواژه |
+| 1204 | `wrong_password` | `error.security.wrong_password` | گذرواژه نادرست (پیام عامدانه کلی) |
+| 1205 | `profile_locked` | `error.security.profile_locked` | عملیات نیازمند بازکردن پروفایل |
+| 1206 | `vault_not_found` | `error.security.vault_not_found` | گاوصندوق پروفایل مقداردهی نشده |
+| 1207 | `vault_already_initialized` | `error.security.vault_already_initialized` | راه‌اندازی مجدد گاوصندوق ممنوع |
+| 1208 | `kdf_failed` | `error.security.kdf_failed` | شکست Argon2id یا قالب هش |
+| 1209 | `audit_error` | `error.security.audit_error` | خطای ثبت/خواندن حسابرسی |
+| 1210 | `malformed_vault_record` | `error.security.malformed_vault_record` | رکورد گاوصندوق خراب/نسخه ناشناخته |
+
 ## قواعد
 
 1. هر واریانت خطا باید کد یکتا، واریانت ماشین‌خوان و کلید پیام فارسی داشته باشد.
