@@ -169,6 +169,19 @@ dependencies = [
 [[package]]
 name = "aria-query-engine"
 version = "0.1.0"
+dependencies = [
+ "aria-contracts",
+ "aria-domain-engine",
+ "aria-schema-engine",
+ "aria-storage-engine",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "aria-runtime-engine"

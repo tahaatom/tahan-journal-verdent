@@ -100,6 +100,15 @@
 | 1509 | `network_access_not_approved` | `error.plugin.network_not_approved` | دسترسی شبکه بدون تأیید صریح کاربر |
 | 1510 | `plugin_storage_error` | `error.plugin.storage_error` | خطای ذخیره‌سازی لایه پلاگین |
 
+### موتور پرس‌وجو (1700–1799)
+
+| کد | واریانت ماشین‌خوان | کلید پیام فارسی | توضیح |
+|---|---|---|---|
+| 1701 | `invalid_query` | `error.query.invalid_query` | فیلتر، صفحه یا پارامتر پرس‌وجو نامعتبر |
+| 1702 | `budget_exceeded` | `error.query.budget_exceeded` | فراتر رفت از بودجه پرس‌وجو (اندازه صفحه > ۲۰۰ یا گام‌های ماشین مجازی) |
+| 1703 | `field_not_queryable` | `error.query.field_not_queryable` | فیلد سفارشی ناموجود، غیرفعال یا بدون مجوز فیلتر/آمار |
+| 1704 | `query_storage_error` | `error.query.storage_error` | خطای ذخیره‌سازی زیرین موتور پرس‌وجو |
+
 ## قواعد
 
 1. هر واریانت خطا باید کد یکتا، واریانت ماشین‌خوان و کلید پیام فارسی داشته باشد.

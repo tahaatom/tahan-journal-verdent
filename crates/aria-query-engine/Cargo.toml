@@ -5,6 +5,19 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Query engine of the Aria Kernel (filters, aggregations, projections, caching)"
+description = "Query engine of the Aria Kernel (filters, aggregations, projections, caching, custom-field analytics)"
 
 [dependencies]
+aria-contracts = { path = "../aria-contracts" }
+aria-storage-engine = { path = "../aria-storage-engine" }
+aria-schema-engine = { path = "../aria-schema-engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rusqlite = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+aria-domain-engine = { path = "../aria-domain-engine" }
+uuid = { workspace = true }
