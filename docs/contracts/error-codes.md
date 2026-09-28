@@ -12,7 +12,7 @@
 | 1200–1299 | aria-security-engine | فعال |
 | 1300–1399 | aria-schema-engine | فعال |
 | 1400–1499 | aria-domain-engine | فعال |
-| 1500–1599 | aria-plugin-engine | رزرو (فاز ۱.۷) |
+| 1500–1599 | aria-plugin-engine | فعال |
 | 1600–1699 | aria-runtime-engine | رزرو (فاز ۱.۸) |
 | 1700–1799 | aria-query-engine | رزرو (فاز ۱.۹) |
 | 1800–1899 | aria-ui-engine | رزرو (فاز ۱.۱۰) |
@@ -84,6 +84,21 @@
 | 1408 | `override_error` | `error.domain.override_error` | بازنویسی ناموجود یا بازگشت‌ناپذیر |
 | 1409 | `attachment_not_found` | `error.domain.attachment_not_found` | پیوست یافت نشد |
 | 1410 | `domain_storage_error` | `error.domain.storage_error` | خطای ذخیره‌سازی لایه دامنه |
+
+### موتور پلاگین (1500–1599)
+
+| کد | واریانت ماشین‌خوان | کلید پیام فارسی | توضیح |
+|---|---|---|---|
+| 1501 | `manifest_invalid` | `error.plugin.manifest_invalid` | مانیفست نامعتبر (اسکیما/فیلد الزامی/semver) |
+| 1502 | `plugin_not_found` | `error.plugin.not_found` | پلاگین یافت نشد |
+| 1503 | `duplicate_plugin` | `error.plugin.duplicate` | شناسه پلاگین از قبل ثبت شده |
+| 1504 | `version_incompatible` | `error.plugin.version_incompatible` | ناسازگاری نسخه کرنل یا API با بازه مانیفست |
+| 1505 | `unknown_capability` | `error.plugin.unknown_capability` | قابلیت خارج از فهرست بسته |
+| 1506 | `permission_denied` | `error.plugin.permission_denied` | فراخوانی بدون قابلیت مجاز یا پلاگین غیرفعال |
+| 1507 | `invalid_state_transition` | `error.plugin.invalid_transition` | گذار وضعیت ممنوع در چرخه حیات |
+| 1508 | `plugin_quarantined` | `error.plugin.quarantined` | پلاگین در قرنطینه؛ عملیات ممنوع |
+| 1509 | `network_access_not_approved` | `error.plugin.network_not_approved` | دسترسی شبکه بدون تأیید صریح کاربر |
+| 1510 | `plugin_storage_error` | `error.plugin.storage_error` | خطای ذخیره‌سازی لایه پلاگین |
 
 ## قواعد
 

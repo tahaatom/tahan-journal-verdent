@@ -5,10 +5,13 @@
 //!
 //! پیاده‌سازی کامل در فاز ۱.۸ انجام می‌شود.
 
+/// نسخه قرارداد ناظر فرایند (رزرو فاز ۱.۸).
+pub const RUNTIME_SUPERVISOR_VERSION: u32 = 1;
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn placeholder_compiles() {
-        assert!(true);
+        assert_eq!(super::RUNTIME_SUPERVISOR_VERSION, 1);
     }
 }
