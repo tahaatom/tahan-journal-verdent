@@ -22,8 +22,12 @@ pub enum SecurityError {
     KdfFailed { reason: String, code: u32 },
     #[error("audit error: {reason}")]
     Audit { reason: String, code: u32 },
+    /// ۱۲۱۰ — رکورد گاوصندوق خراب
     #[error("malformed vault record: {reason}")]
     MalformedVaultRecord { reason: String, code: u32 },
+    /// ۱۲۱۱ — تلاش ورود بیش از حد مجاز؛ قفل موقت (محدودسازی نرخ)
+    #[error("too many failed unlock attempts for profile: {profile}")]
+    RateLimited { profile: String, code: u32 },
 }
 
 impl SecurityError {
@@ -38,7 +42,8 @@ impl SecurityError {
             | Self::VaultAlreadyInitialized { code, .. }
             | Self::KdfFailed { code, .. }
             | Self::Audit { code, .. }
-            | Self::MalformedVaultRecord { code, .. } => *code,
+            | Self::MalformedVaultRecord { code, .. }
+            | Self::RateLimited { code, .. } => *code,
         }
     }
 
@@ -54,6 +59,7 @@ impl SecurityError {
             Self::KdfFailed { .. } => "kdf_failed",
             Self::Audit { .. } => "audit_error",
             Self::MalformedVaultRecord { .. } => "malformed_vault_record",
+            Self::RateLimited { .. } => "rate_limited",
         }
     }
 
@@ -69,6 +75,7 @@ impl SecurityError {
             Self::KdfFailed { .. } => "error.security.kdf_failed",
             Self::Audit { .. } => "error.security.audit_error",
             Self::MalformedVaultRecord { .. } => "error.security.malformed_vault_record",
+            Self::RateLimited { .. } => "error.security.rate_limited",
         }
     }
 
@@ -103,6 +110,9 @@ impl SecurityError {
     pub fn malformed_vault_record(reason: impl Into<String>) -> Self {
         Self::MalformedVaultRecord { reason: reason.into(), code: 1210 }
     }
+    pub fn rate_limited(profile: impl Into<String>) -> Self {
+        Self::RateLimited { profile: profile.into(), code: 1211 }
+    }
 }
 
 #[cfg(test)]
@@ -123,6 +133,7 @@ mod tests {
             SecurityError::kdf("d"),
             SecurityError::audit("e"),
             SecurityError::malformed_vault_record("f"),
+            SecurityError::rate_limited("p"),
         ];
         let mut seen = HashSet::new();
         for e in errs {

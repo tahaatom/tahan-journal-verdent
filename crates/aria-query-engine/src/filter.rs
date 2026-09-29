@@ -63,38 +63,58 @@ pub struct TradeFilter {
 }
 
 /// مقدار تایپ‌دار فیلد سفارشی برای مقایسه.
+///
+/// نکته serde: واریانت‌ها ساختاری‌اند (`{"kind":"integer","value":70}`) تا با
+/// برچسب داخلی تجزیه‌شدنی باشند (تاپلی روی عدد/رشته با تگ داخلی کار نمی‌کند).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CustomValue {
-    Text(String),
-    Integer(i64),
-    Decimal(f64),
-    Boolean(bool),
+    Text { value: String },
+    Integer { value: i64 },
+    Decimal { value: f64 },
+    Boolean { value: bool },
 }
 
 impl CustomValue {
     /// معادل SQL برای لاگ و سریال‌سازی — تبدیل واقعی در شرط فیلتر انجام می‌شود.
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Text(_) => "text",
-            Self::Integer(_) => "integer",
-            Self::Decimal(_) => "decimal",
-            Self::Boolean(_) => "boolean",
+            Self::Text { .. } => "text",
+            Self::Integer { .. } => "integer",
+            Self::Decimal { .. } => "decimal",
+            Self::Boolean { .. } => "boolean",
         }
+    }
+
+    /// سازنده‌های کوتاه برای استفاده در کد و تست‌ها.
+    pub fn text(v: impl Into<String>) -> Self {
+        Self::Text { value: v.into() }
+    }
+    pub fn integer(v: i64) -> Self {
+        Self::Integer { value: v }
+    }
+    pub fn decimal(v: f64) -> Self {
+        Self::Decimal { value: v }
+    }
+    pub fn boolean(v: bool) -> Self {
+        Self::Boolean { value: v }
     }
 }
 
 /// عملگرهای فیلد سفارشی طبق قرارداد.
+///
+/// نکته serde: واریانت‌ها ساختاری‌اند (`{"op":"min","value":50.0}`) تا شکل
+/// JSON پل فرانت‌اند مستقیم تجزیه شود (همان محدودیت تگ داخلی FilterNode).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum CustomFieldOp {
-    Equals(CustomValue),
-    NotEquals(CustomValue),
-    Contains(String),
-    Min(f64),
-    Max(f64),
-    In(Vec<CustomValue>),
-    NotIn(Vec<CustomValue>),
+    Equals { value: CustomValue },
+    NotEquals { value: CustomValue },
+    Contains { value: String },
+    Min { value: f64 },
+    Max { value: f64 },
+    In { values: Vec<CustomValue> },
+    NotIn { values: Vec<CustomValue> },
     Exists,
 }
 
@@ -105,21 +125,82 @@ pub struct CustomFieldFilter {
     pub op: CustomFieldOp,
 }
 
-/// گره درخت فیلتر — ترکیب AND/OR با تودرتویی دلخواه.
+/// حداکثر عمق مجاز درخت فیلتر — هم‌تراز با نگهبان فرانت‌اند (`extensions.ts`).
+pub const MAX_FILTER_DEPTH: usize = 8;
+
+/// گره درخت فیلتر — ترکیب AND/OR با تودرتویی محدود.
+///
+/// نکته serde: گروه‌ها واریانت **ساختاری** هستند (`{"type":"all","children":[…]}`)
+/// تا شکل JSON پل فرانت‌اند (`kernel.ts`) مستقیم تجزیه شود؛ واریانت تاپلی
+/// روی Vec با برچسب داخلی تجزیه‌شدنی نیست.
+///
+/// نکته امنیتی: تجزیه از مسیر `try_from` می‌گذرد تا عمق تودرتویی پیش از
+/// ساخت درخت بررسی شود و ورودی خرابکارانه (هزاران لایه) باعث سرریز پشته
+/// در خودِ serde نشود.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", try_from = "FilterNodeInput")]
 pub enum FilterNode {
     Simple(Box<TradeFilter>),
     Custom(CustomFieldFilter),
-    All(Vec<FilterNode>),
-    Any(Vec<FilterNode>),
+    All {
+        children: Vec<FilterNode>,
+    },
+    Any {
+        children: Vec<FilterNode>,
+    },
 }
 
 impl FilterNode {
     /// فیلتر خالی = بدون قید.
     pub fn empty() -> Self {
-        Self::All(vec![])
+        Self::All { children: vec![] }
     }
+}
+
+/// شکل میانی برای تجزیه با بررسی عمق — آینه ساختار `FilterNode`.
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum FilterNodeInput {
+    Simple(Box<TradeFilter>),
+    Custom(CustomFieldFilter),
+    All {
+        children: Vec<FilterNodeInput>,
+    },
+    Any {
+        children: Vec<FilterNodeInput>,
+    },
+}
+
+impl TryFrom<FilterNodeInput> for FilterNode {
+    type Error = QueryError;
+
+    fn try_from(input: FilterNodeInput) -> Result<Self, QueryError> {
+        convert_node(input, 1)
+    }
+}
+
+fn convert_node(input: FilterNodeInput, depth: usize) -> Result<FilterNode, QueryError> {
+    if depth > MAX_FILTER_DEPTH {
+        return Err(QueryError::invalid_query(format!(
+            "عمق فیلتر از حد مجاز {MAX_FILTER_DEPTH} فراتر رفت"
+        )));
+    }
+    Ok(match input {
+        FilterNodeInput::Simple(f) => FilterNode::Simple(f),
+        FilterNodeInput::Custom(c) => FilterNode::Custom(c),
+        FilterNodeInput::All { children } => FilterNode::All {
+            children: children
+                .into_iter()
+                .map(|c| convert_node(c, depth + 1))
+                .collect::<Result<Vec<_>, _>>()?,
+        },
+        FilterNodeInput::Any { children } => FilterNode::Any {
+            children: children
+                .into_iter()
+                .map(|c| convert_node(c, depth + 1))
+                .collect::<Result<Vec<_>, _>>()?,
+        },
+    })
 }
 
 /// فراداده یک فیلد سفارشی که از `custom_fields` خوانده می‌شود.
@@ -164,7 +245,17 @@ pub(crate) fn like_escape(s: &str) -> String {
 }
 
 fn is_date_only(s: &str) -> bool {
-    s.len() == 10 && s.as_bytes().get(4) == Some(&b'-')
+    // فقط YYYY-MM-DD دقیق (ده نویسه، الگوی عددی، ماه ۰۱-۱۲ و روز ۰۱-۳۱)
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return false;
+    }
+    if !b.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit()) {
+        return false;
+    }
+    let (mm, dd) = (&s[5..7], &s[8..10]);
+    (1..=12).contains(&mm.parse::<u8>().unwrap_or(0))
+        && (1..=31).contains(&dd.parse::<u8>().unwrap_or(0))
 }
 
 /// شرط محدوده زمان ورود؛ مقایسه تاریخ‌محور برای رشته‌های ۱۰حرفی
@@ -209,15 +300,17 @@ fn custom_value_condition(
     // مقایسه برابری: متن، عدد صحیح، اعشاری و بولی بر اساس ستون مقصد
     let expect_cmp = |v: &CustomValue| -> Result<SqlValue, QueryError> {
         match (v, column) {
-            (CustomValue::Text(s), "text_value" | "datetime_value") => Ok(SqlValue::Text(s.clone())),
-            (CustomValue::Integer(i), "integer_value" | "boolean_value") => {
-                Ok(SqlValue::Integer(*i))
+            (CustomValue::Text { value }, "text_value" | "datetime_value") => {
+                Ok(SqlValue::Text(value.clone()))
             }
-            (CustomValue::Boolean(b), "integer_value" | "boolean_value") => {
-                Ok(SqlValue::Integer(*b as i64))
+            (CustomValue::Integer { value }, "integer_value" | "boolean_value") => {
+                Ok(SqlValue::Integer(*value))
             }
-            (CustomValue::Decimal(d), "decimal_value") => Ok(SqlValue::Real(*d)),
-            (CustomValue::Integer(i), "decimal_value") => Ok(SqlValue::Real(*i as f64)),
+            (CustomValue::Boolean { value }, "integer_value" | "boolean_value") => {
+                Ok(SqlValue::Integer(*value as i64))
+            }
+            (CustomValue::Decimal { value }, "decimal_value") => Ok(SqlValue::Real(*value)),
+            (CustomValue::Integer { value }, "decimal_value") => Ok(SqlValue::Real(*value as f64)),
             _ => Err(QueryError::invalid_query(
                 "نوع مقدار با نوع ذخیره‌سازی فیلد سفارشی سازگار نیست",
             )),
@@ -226,33 +319,36 @@ fn custom_value_condition(
 
     // ساخت نهایی شرط + پارامترها
     match op {
-        CustomFieldOp::Equals(v) => {
+        CustomFieldOp::Equals { value } => {
             if json_col {
                 return Err(QueryError::invalid_query(
                     "برای فیلدهای چندمقداری از contains استفاده کنید",
                 ));
             }
-            let p = expect_cmp(v)?;
+            let p = expect_cmp(value)?;
             Ok((format!("{column} = ?"), vec![p]))
         }
-        CustomFieldOp::NotEquals(v) => {
+        CustomFieldOp::NotEquals { value } => {
             if json_col {
                 return Err(QueryError::invalid_query(
                     "برای فیلدهای چندمقداری از contains استفاده کنید",
                 ));
             }
-            let p = expect_cmp(v)?;
+            let p = expect_cmp(value)?;
             Ok((format!("({column} IS NOT NULL AND {column} <> ?)"), vec![p]))
         }
-        CustomFieldOp::Contains(v) => {
+        CustomFieldOp::Contains { value } => {
             if numeric_col || column == "boolean_value" {
                 return Err(QueryError::invalid_query(
                     "عملگر contains فقط برای فیلدهای متنی/چندمقداری مجاز است",
                 ));
             }
-            let escaped = like_escape(v);
+            let escaped = like_escape(value);
             if json_col {
-                Ok((format!("{column} LIKE ?"), vec![SqlValue::Text(format!("%\"{escaped}\"%"))]))
+                Ok((
+                    format!(r#"{column} LIKE ? ESCAPE '\'"#),
+                    vec![SqlValue::Text(format!("%\"{escaped}\"%"))],
+                ))
             } else {
                 Ok((
                     format!(r#"{column} LIKE ? ESCAPE '\'"#),
@@ -260,23 +356,23 @@ fn custom_value_condition(
                 ))
             }
         }
-        CustomFieldOp::Min(v) => {
+        CustomFieldOp::Min { value } => {
             if !numeric_col {
                 return Err(QueryError::invalid_query(
                     "عملگر min فقط برای فیلدهای عددی مجاز است",
                 ));
             }
-            Ok((format!("{column} >= ?"), vec![SqlValue::Real(*v)]))
+            Ok((format!("{column} >= ?"), vec![SqlValue::Real(*value)]))
         }
-        CustomFieldOp::Max(v) => {
+        CustomFieldOp::Max { value } => {
             if !numeric_col {
                 return Err(QueryError::invalid_query(
                     "عملگر max فقط برای فیلدهای عددی مجاز است",
                 ));
             }
-            Ok((format!("{column} <= ?"), vec![SqlValue::Real(*v)]))
+            Ok((format!("{column} <= ?"), vec![SqlValue::Real(*value)]))
         }
-        CustomFieldOp::In(values) => {
+        CustomFieldOp::In { values } => {
             if json_col {
                 return Err(QueryError::invalid_query(
                     "برای فیلدهای چندمقداری از contains استفاده کنید",
@@ -293,7 +389,7 @@ fn custom_value_condition(
                 Ok((format!("{column} IN ({marks})"), ps))
             }
         }
-        CustomFieldOp::NotIn(values) => {
+        CustomFieldOp::NotIn { values } => {
             if json_col {
                 return Err(QueryError::invalid_query(
                     "برای فیلدهای چندمقداری از contains استفاده کنید",
@@ -441,13 +537,13 @@ pub(crate) fn build_filter(
                 out.push_and(&cond, &params);
                 Ok(())
             }
-            FilterNode::All(children) => {
+            FilterNode::All { children } => {
                 for c in children {
                     build(conn, c, out)?;
                 }
                 Ok(())
             }
-            FilterNode::Any(children) => {
+            FilterNode::Any { children } => {
                 if children.is_empty() {
                     return Err(QueryError::invalid_query(
                         "گروه OR نمی‌تواند خالی باشد",
@@ -508,5 +604,73 @@ mod tests {
     fn date_only_detection() {
         assert!(is_date_only("2026-01-31"));
         assert!(!is_date_only("2026-01-31T10:00:00Z"));
+        assert!(!is_date_only("2026-99-99")); // الگوی عددی الزامی
+        assert!(!is_date_only("2026-1-31"));
+        assert!(!is_date_only("2026/01/31"));
+    }
+
+    // ---------- رفت‌وبرگشت serde — قرارداد پل فرانت‌اند ----------
+
+    #[test]
+    fn serde_roundtrip_all_group_matches_frontend_shape() {
+        // دقیقاً شکلی که kernel.ts می‌فرستد
+        let json = r#"{"type":"all","children":[]}"#;
+        let node: FilterNode = serde_json::from_str(json).unwrap();
+        assert!(matches!(node, FilterNode::All { children } if children.is_empty()));
+        assert_eq!(serde_json::to_string(&FilterNode::empty()).unwrap(), json);
+    }
+
+    #[test]
+    fn serde_roundtrip_nested_groups_and_simple() {
+        let json = serde_json::json!({
+            "type": "any",
+            "children": [
+                {"type": "all", "children": [
+                    {"type": "simple", "strategy": "برک‌اوت", "result": "win"}
+                ]},
+                {"type": "simple", "symbol_id": "XAUUSD"}
+            ]
+        });
+        let node: FilterNode = serde_json::from_value(json).unwrap();
+        let back = serde_json::to_value(&node).unwrap();
+        let parsed: FilterNode = serde_json::from_value(back).unwrap();
+        // رفت‌وبرگشت کامل بدون خطا
+        assert!(matches!(parsed, FilterNode::Any { children } if children.len() == 2));
+    }
+
+    #[test]
+    fn serde_roundtrip_custom_filter_with_op_tag() {
+        let json = serde_json::json!({
+            "type": "custom",
+            "field_key": "confidence",
+            "op": {"op": "min", "value": 50.0}
+        });
+        let parsed: FilterNode = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            parsed,
+            FilterNode::Custom(CustomFieldFilter { op: CustomFieldOp::Min { value: 50.0 }, .. })
+        ));
+    }
+
+    #[test]
+    fn filter_depth_at_limit_accepted() {
+        // ۸ سطح تودرتویی (حد مجاز) باید پذیرفته شود
+        let mut node = serde_json::json!({"type": "all", "children": []});
+        for _ in 1..MAX_FILTER_DEPTH {
+            node = serde_json::json!({"type": "all", "children": [node]});
+        }
+        let parsed: FilterNode = serde_json::from_value(node).unwrap();
+        assert!(matches!(parsed, FilterNode::All { .. }));
+    }
+
+    #[test]
+    fn filter_depth_beyond_limit_rejected_1701() {
+        // ۹ سطح تودرتویی باید با کد ۱۷۰۱ رد شود — نه سرریز پشته
+        let mut node = serde_json::json!({"type": "all", "children": []});
+        for _ in 0..MAX_FILTER_DEPTH {
+            node = serde_json::json!({"type": "all", "children": [node]});
+        }
+        let err = serde_json::from_value::<FilterNode>(node).unwrap_err();
+        assert!(err.to_string().contains("عمق فیلتر"));
     }
 }

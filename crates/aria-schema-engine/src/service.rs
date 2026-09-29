@@ -263,6 +263,13 @@ impl<'a> SchemaService<'a> {
         raw: &serde_json::Value,
     ) -> Result<(), SchemaError> {
         let field = self.get_field(field_id)?;
+        if !field.active {
+            // نوشتن روی فیلد غیرفعال ممنوع — فیلد غیرفعال فقط برای حفظ داده‌های
+            // تاریخی خوانده می‌شود (قاعده ۲ مدل فیلدهای سفارشی).
+            return Err(SchemaError::invalid_definition(format!(
+                "field {field_id} is inactive — writing values is forbidden"
+            )));
+        }
         let options = self.active_options(field_id)?;
         let typed = validate_value(&field, &options, raw)?;
         let conn = self.db.lock();
@@ -646,6 +653,9 @@ mod tests {
         // داده حفظ شده است
         let v = s.get_values(&t1).unwrap();
         assert_eq!(v["conf1"], 7);
+        // نوشتن روی فیلد غیرفعال ممنوع (۱۳۰۳)
+        let err = s.set_value(&t1, &f.id, &serde_json::json!(9)).unwrap_err();
+        assert_eq!(err.code(), 1303);
     }
 
     #[test]

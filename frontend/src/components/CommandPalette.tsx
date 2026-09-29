@@ -77,7 +77,7 @@ export function CommandPalette({
         onClose();
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
-        setActive((a) => Math.min(a + 1, filtered.length - 1));
+        setActive((a) => Math.min(a + 1, Math.max(filtered.length - 1, 0)));
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setActive((a) => Math.max(a - 1, 0));

@@ -190,12 +190,44 @@ impl<'a> PluginService<'a> {
 
     /// راه‌اندازی — enabled|stopped|crashed → running.
     /// اگر پلاگین به network.access نیاز داشته باشد و کاربر تأیید نکرده باشد → ۱۵۰۹.
+    /// بررسی وضعیت + مانیفست + تأیید شبکه در «یک» تراکنش انجام می‌شود تا
+    /// پنجره‌ای برای لغو هم‌زمان تأیید (TOCTOU) باقی نماند.
     pub fn start(&self, plugin_id: &str) -> Result<(), PluginError> {
-        let manifest = self.manifest_of(plugin_id)?;
-        if manifest.needs_network() && !self.network_approved(plugin_id)? {
-            return Err(PluginError::network_not_approved(plugin_id));
+        let mut guard = self.db.lock();
+        let tx = guard
+            .transaction()
+            .map_err(|e| PluginError::storage(e.to_string()))?;
+        let manifest_json: String = tx
+            .query_row(
+                "SELECT manifest_json FROM plugins WHERE id = ?1",
+                params![plugin_id],
+                |r| r.get(0),
+            )
+            .map_err(|_| PluginError::plugin_not_found(plugin_id))?;
+        let manifest = PluginManifest::parse(&manifest_json)?;
+        if manifest.needs_network() {
+            let approved: Option<String> = tx
+                .query_row(
+                    "SELECT value FROM settings WHERE key = ?1",
+                    params![format!("plugin.network_approved.{plugin_id}")],
+                    |r| r.get(0),
+                )
+                .map(Some)
+                .or_else(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                    other => Err(other),
+                })?;
+            if approved.as_deref() != Some("true") {
+                return Err(PluginError::network_not_approved(plugin_id));
+            }
         }
-        self.transition_with_reset(plugin_id, PluginStatus::Running, "start")
+        self.transition_tx(&tx, plugin_id, PluginStatus::Running, "start")?;
+        tx.execute(
+            "UPDATE plugins SET crash_count = 0, updated_at = ?1 WHERE id = ?2",
+            params![now_iso(), plugin_id],
+        )?;
+        tx.commit().map_err(|e| PluginError::storage(e.to_string()))?;
+        Ok(())
     }
 
     /// توقف — running → stopped.
@@ -256,11 +288,27 @@ impl<'a> PluginService<'a> {
     }
 
     /// خروج دستی کاربر از قرنطینه — quarantined → disabled (سپس enable دستی).
+    /// فقط از وضعیت «quarantined» مجاز است (۱۵۰۷ در غیر این صورت).
     pub fn release_from_quarantine(&self, plugin_id: &str) -> Result<(), PluginError> {
         let mut guard = self.db.lock();
         let tx = guard
             .transaction()
             .map_err(|e| PluginError::storage(e.to_string()))?;
+        let status: String = tx
+            .query_row(
+                "SELECT status FROM plugins WHERE id = ?1",
+                params![plugin_id],
+                |r| r.get(0),
+            )
+            .map_err(|_| PluginError::plugin_not_found(plugin_id))?;
+        let current = PluginStatus::parse(&status)
+            .ok_or_else(|| PluginError::storage(format!("corrupt status: {status}")))?;
+        if current != PluginStatus::Quarantined {
+            return Err(PluginError::invalid_transition(format!(
+                "release_from_quarantine requires quarantined status, found {}",
+                current.as_str()
+            )));
+        }
         self.transition_tx(&tx, plugin_id, PluginStatus::Disabled, "release_from_quarantine")?;
         // شمارنده کرش متوالی پس از اقدام دستی کاربر صفر می‌شود
         tx.execute(
@@ -323,9 +371,20 @@ impl<'a> PluginService<'a> {
 
     /// اجرای مجوز برای فراخوانی RPC پلاگین — نقطه واحد اعمال قابلیت‌ها.
     /// پلاگین باید فعال (enabled/running) باشد؛ قرنطینه ۱۵۰۸ و بقیه ۱۵۰۶ می‌دهند.
+    /// وضعیت + مانیفست + تأیید شبکه زیر «یک» قفل خوانده می‌شوند تا پنجره
+    /// تغییر هم‌زمان (TOCTOU) وجود نداشته باشد.
     pub fn enforce(&self, plugin_id: &str, cap: Capability) -> Result<(), PluginError> {
-        let record = self.record_of(plugin_id)?;
-        match record.status {
+        let conn = self.db.lock();
+        let (status, manifest_json): (String, String) = conn
+            .query_row(
+                "SELECT status, manifest_json FROM plugins WHERE id = ?1",
+                params![plugin_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(|_| PluginError::plugin_not_found(plugin_id))?;
+        let record_status = PluginStatus::parse(&status)
+            .ok_or_else(|| PluginError::storage(format!("corrupt status: {status}")))?;
+        match record_status {
             PluginStatus::Quarantined => return Err(PluginError::quarantined(plugin_id)),
             PluginStatus::Enabled | PluginStatus::Running => {}
             PluginStatus::Installed
@@ -334,18 +393,31 @@ impl<'a> PluginService<'a> {
             | PluginStatus::Disabled => {
                 return Err(PluginError::permission_denied(format!(
                     "plugin not active (status: {})",
-                    record.status.as_str()
+                    record_status.as_str()
                 )))
             }
         }
-        let manifest = self.manifest_of(plugin_id)?;
+        let manifest = PluginManifest::parse(&manifest_json)?;
         let perms = PermissionSet::from_capabilities(
             &manifest.capabilities.iter().filter_map(|c| Capability::parse(c)).collect::<Vec<_>>(),
         );
         perms.require(cap)?;
         // قابلیت ویژه شبکه — تأیید صریح کاربر لازم است حتی اگر در مانیفست باشد
-        if cap == Capability::NetworkAccess && !self.network_approved(plugin_id)? {
-            return Err(PluginError::network_not_approved(plugin_id));
+        if cap == Capability::NetworkAccess {
+            let approved: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = ?1",
+                    params![format!("plugin.network_approved.{plugin_id}")],
+                    |r| r.get(0),
+                )
+                .map(Some)
+                .or_else(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                    other => Err(other),
+                })?;
+            if approved.as_deref() != Some("true") {
+                return Err(PluginError::network_not_approved(plugin_id));
+            }
         }
         Ok(())
     }
@@ -385,15 +457,22 @@ impl<'a> PluginService<'a> {
             "SELECT id, status, crash_count, last_error FROM plugins ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
-            let status_text: String = r.get(1)?;
-            Ok(PluginHealth {
-                id: r.get(0)?,
-                status: PluginStatus::parse(&status_text).unwrap_or(PluginStatus::Installed),
-                crash_count: r.get(2)?,
-                last_error: r.get(3)?,
-            })
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, Option<String>>(3)?,
+            ))
         })?;
-        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, status_text, crash_count, last_error) = row?;
+            // وضعیت خراب را بی‌صدا پنهان نکن — خطا برگردان
+            let status = PluginStatus::parse(&status_text)
+                .ok_or_else(|| PluginError::storage(format!("corrupt status: {status_text}")))?;
+            out.push(PluginHealth { id, status, crash_count, last_error });
+        }
+        Ok(out)
     }
 
     /// مانیفست پلاگین ثبت‌شده.
@@ -467,21 +546,7 @@ impl<'a> PluginService<'a> {
         Ok(())
     }
 
-    /// گذار با صفرکردن شمارنده کرش متوالی (شروع موفق) — در همان تراکنش.
-    fn transition_with_reset(&self, plugin_id: &str, target: PluginStatus, action: &str) -> Result<(), PluginError> {
-        let mut guard = self.db.lock();
-        let tx = guard
-            .transaction()
-            .map_err(|e| PluginError::storage(e.to_string()))?;
-        self.transition_tx(&tx, plugin_id, target, action)?;
-        tx.execute(
-            "UPDATE plugins SET crash_count = 0, updated_at = ?1 WHERE id = ?2",
-            params![now_iso(), plugin_id],
-        )?;
-        tx.commit().map_err(|e| PluginError::storage(e.to_string()))?;
-        Ok(())
-    }
-
+    /// گذار وضعیت با اعتبارسنجی جدول گذارها و نوشتن رویداد — در تراکنش جاری.
     fn transition_tx(&self, tx: &Transaction<'_>, plugin_id: &str, target: PluginStatus, action: &str) -> Result<(), PluginError> {
         let status: String = tx
             .query_row(
@@ -538,10 +603,11 @@ impl<'a> PluginService<'a> {
     /// رویدادهای منتشرنشده — برای انتشار پس از commit (الگوی مشترک کرنل).
     pub fn unpublished_events(&self, limit: usize) -> Result<Vec<EventEnvelope>, PluginError> {
         let conn = self.db.lock();
+        // ترتیب قطعی: زمان ایجاد سپس ترتیب درج (rowid)؛ زمان رویداد از خود ردیف می‌آید
         let mut stmt = conn.prepare_cached(
-            "SELECT id, event_type, event_version, source, correlation_id, payload
+            "SELECT id, event_type, event_version, source, correlation_id, payload, created_at
              FROM system_events WHERE published = 0 AND source = 'plugin_engine'
-             ORDER BY created_at LIMIT ?1",
+             ORDER BY created_at, rowid LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], |r| {
             Ok((
@@ -551,11 +617,15 @@ impl<'a> PluginService<'a> {
                 r.get::<_, String>(3)?,
                 r.get::<_, String>(4)?,
                 r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
             ))
         })?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, event_type, version, source, correlation, payload) = row?;
+            let (id, event_type, version, source, correlation, payload, created_at) = row?;
+            let timestamp = chrono::DateTime::parse_from_rfc3339(&created_at)
+                .map(|d| d.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|_| chrono::Utc::now());
             out.push(EventEnvelope {
                 event_id: Uuid::parse_str(&id)
                     .map_err(|e| PluginError::storage(format!("bad event_id: {e}")))?,
@@ -565,7 +635,7 @@ impl<'a> PluginService<'a> {
                     "plugin_engine" => EventSource::PluginEngine,
                     other => EventSource::Other(other.to_string()),
                 },
-                timestamp: chrono::Utc::now(),
+                timestamp,
                 correlation_id: Uuid::parse_str(&correlation)
                     .map_err(|e| PluginError::storage(format!("bad correlation_id: {e}")))?,
                 payload: serde_json::from_str(&payload)
@@ -891,6 +961,39 @@ mod tests {
         assert_eq!(err.code(), 1509);
         s.approve_network_access("com.test.alpha").unwrap();
         assert!(s.start("com.test.alpha").is_ok());
+    }
+
+    #[test]
+    fn release_from_quarantine_rejects_non_quarantined_plugin() {
+        let db = db();
+        run_to_running(&db, "com.test.alpha", &[]);
+        let s = svc(&db);
+        // پلاگین running است — رهاسازی قرنطینه باید ۱۵۰۷ بدهد نه بی‌اثر بودن
+        let err = s.release_from_quarantine("com.test.alpha").unwrap_err();
+        assert_eq!(err.code(), 1507);
+    }
+
+    #[test]
+    fn outbox_events_carry_row_timestamp_in_deterministic_order() {
+        let db = db();
+        run_to_running(&db, "com.test.alpha", &[]);
+        let s = svc(&db);
+        s.report_crash("com.test.alpha", "boom").unwrap();
+        let events = s.unpublished_events(10).unwrap();
+        assert!(!events.is_empty());
+        // timestamp رویداد باید منطبق بر created_at ردیف outbox باشد (UTC ثانیه‌ای)
+        {
+            let conn = db.lock();
+            let created: String = conn
+                .query_row(
+                    "SELECT created_at FROM system_events WHERE source = 'plugin_engine' LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            let parsed = chrono::DateTime::parse_from_rfc3339(&created).unwrap();
+            assert_eq!(events[0].timestamp.to_rfc3339(), parsed.with_timezone(&chrono::Utc).to_rfc3339());
+        }
     }
 
     #[test]

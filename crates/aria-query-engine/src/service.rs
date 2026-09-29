@@ -108,6 +108,15 @@ fn prepared_filter(conn: &Connection, node: &FilterNode) -> Result<SqlFilter, Qu
     build_filter(conn, node)
 }
 
+/// پسوند شرط «حذف‌نشده» به WHERE موجود — معاملات حذف‌نرم هرگز در نتایج ظاهر نمی‌شوند.
+fn and_not_deleted(where_clause: &str) -> String {
+    if where_clause.is_empty() {
+        " WHERE journal_trades.deleted_at IS NULL".to_string()
+    } else {
+        format!("{where_clause} AND journal_trades.deleted_at IS NULL")
+    }
+}
+
 fn row_to_list_row(r: &rusqlite::Row<'_>) -> Result<TradeListRow, rusqlite::Error> {
     Ok(TradeListRow {
         id: r.get(0)?,
@@ -188,7 +197,7 @@ impl<'a> QueryService<'a> {
         let conn = self.db.lock();
         with_row_budget(&conn, DEFAULT_ROW_BUDGET, || {
             let filter = prepared_filter(&conn, node)?;
-            let base = format!("FROM journal_trades{}", filter.where_clause);
+            let base = format!("FROM journal_trades{}", and_not_deleted(&filter.where_clause));
             let total: i64 = conn.query_row(
                 &format!("SELECT COUNT(*) {base}"),
                 rusqlite::params_from_iter(filter.params.clone()),
@@ -221,7 +230,7 @@ impl<'a> QueryService<'a> {
         let conn = self.db.lock();
         with_row_budget(&conn, DEFAULT_ROW_BUDGET, || {
             let filter = prepared_filter(&conn, node)?;
-            let base = format!("FROM journal_trades{}", filter.where_clause);
+            let base = format!("FROM journal_trades{}", and_not_deleted(&filter.where_clause));
             let mut stats = CoreStats::default();
             let params = rusqlite::params_from_iter(filter.params.clone());
             let aggregate: AggregateRow = conn.query_row(
@@ -280,9 +289,12 @@ impl<'a> QueryService<'a> {
         filter: &SqlFilter,
     ) -> Result<Vec<(String, f64)>, QueryError> {
         let where_extra = if filter.where_clause.is_empty() {
-            " WHERE realized_pnl IS NOT NULL".to_string()
+            " WHERE journal_trades.deleted_at IS NULL AND realized_pnl IS NOT NULL".to_string()
         } else {
-            format!("{} AND realized_pnl IS NOT NULL", filter.where_clause)
+            format!(
+                "{} AND journal_trades.deleted_at IS NULL AND realized_pnl IS NOT NULL",
+                filter.where_clause
+            )
         };
         let sql = format!(
             "SELECT substr(COALESCE(exit_time, entry_time, created_at), 1, 10) AS d,
@@ -311,7 +323,7 @@ impl<'a> QueryService<'a> {
 
             // ساخت FROM / key_expr / label-map بر اساس بُعد
             let mut extra_join = String::new();
-            let mut extra_wheres: Vec<String> = Vec::new();
+            let mut extra_wheres: Vec<String> = vec!["journal_trades.deleted_at IS NULL".into()];
             let mut extra_params: Vec<SqlValue> = Vec::new();
             let key_expr: String;
             let mut avg_expr: Option<String> = None;
@@ -383,6 +395,7 @@ impl<'a> QueryService<'a> {
             let sql = format!(
                 "SELECT {key_expr} AS gkey, COUNT(*),
                         SUM(CASE WHEN journal_trades.realized_pnl > 0 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN journal_trades.realized_pnl IS NOT NULL THEN 1 ELSE 0 END),
                         SUM(journal_trades.realized_pnl),
                         AVG(journal_trades.realized_r){avg_select}
                  FROM journal_trades{extra_join}{where_extra}
@@ -402,10 +415,11 @@ impl<'a> QueryService<'a> {
                 let key: String = r.get(0)?;
                 let trades: i64 = r.get(1)?;
                 let wins: i64 = r.get(2)?;
-                let total_pnl: Option<f64> = r.get(3)?;
-                let avg_r: Option<f64> = r.get(4)?;
+                let closed: i64 = r.get(3)?;
+                let total_pnl: Option<f64> = r.get(4)?;
+                let avg_r: Option<f64> = r.get(5)?;
                 let avg_custom: Option<f64> = if avg_expr.is_some() {
-                    r.get(5)?
+                    r.get(6)?
                 } else {
                     None
                 };
@@ -421,8 +435,9 @@ impl<'a> QueryService<'a> {
                     label,
                     trades,
                     wins,
-                    win_rate: if trades > 0 {
-                        Some(wins as f64 / trades as f64 * 100.0)
+                    // مخرج نرخ برد = معاملات بسته (هم‌ارز aggregate)، نه همه ردیف‌ها
+                    win_rate: if closed > 0 {
+                        Some(wins as f64 / closed as f64 * 100.0)
                     } else {
                         None
                     },
@@ -722,19 +737,21 @@ mod tests {
         }
         let svc = QueryService::new(&db);
         // (برک‌اوت AND برد) OR برگشت → t1 یا t3
-        let node = FilterNode::Any(vec![
-            FilterNode::All(vec![
+        let node = FilterNode::Any {
+            children: vec![
+                FilterNode::All {
+                    children: vec![FilterNode::Simple(Box::new(TradeFilter {
+                        strategy: Some("برک‌اوت".into()),
+                        result: Some(TradeResult::Win),
+                        ..Default::default()
+                    }))],
+                },
                 FilterNode::Simple(Box::new(TradeFilter {
-                    strategy: Some("برک‌اوت".into()),
-                    result: Some(TradeResult::Win),
+                    strategy: Some("برگشت".into()),
                     ..Default::default()
                 })),
-            ]),
-            FilterNode::Simple(Box::new(TradeFilter {
-                strategy: Some("برگشت".into()),
-                ..Default::default()
-            })),
-        ]);
+            ],
+        };
         let page = svc.list_trades(&node, 1, 50).unwrap();
         assert_eq!(page.total, 2);
         let ids: Vec<&str> = page.items.iter().map(|t| t.id.as_str()).collect();
@@ -746,7 +763,7 @@ mod tests {
         let db = db();
         let svc = QueryService::new(&db);
         let err = svc
-            .list_trades(&FilterNode::Any(vec![]), 1, 50)
+            .list_trades(&FilterNode::Any { children: vec![] }, 1, 50)
             .unwrap_err();
         assert_eq!(err.code(), 1701);
     }
@@ -777,17 +794,17 @@ mod tests {
         let count = |node| svc.list_trades(&node, 1, 50).unwrap().total;
         use CustomFieldOp as Op;
         use CustomValue as V;
-        assert_eq!(count(cf(Op::Equals(V::Integer(70)))), 1);
-        assert_eq!(count(cf(Op::NotEquals(V::Integer(70)))), 1);
-        assert_eq!(count(cf(Op::Min(50.0))), 1);
-        assert_eq!(count(cf(Op::Max(50.0))), 1);
-        assert_eq!(count(cf(Op::In(vec![V::Integer(30), V::Integer(70)]))), 2);
-        assert_eq!(count(cf(Op::NotIn(vec![V::Integer(70)]))), 1);
+        assert_eq!(count(cf(Op::Equals { value: V::Integer { value: 70 } })), 1);
+        assert_eq!(count(cf(Op::NotEquals { value: V::Integer { value: 70 } })), 1);
+        assert_eq!(count(cf(Op::Min { value: 50.0 })), 1);
+        assert_eq!(count(cf(Op::Max { value: 50.0 })), 1);
+        assert_eq!(count(cf(Op::In { values: vec![V::Integer { value: 30 }, V::Integer { value: 70 }] })), 2);
+        assert_eq!(count(cf(Op::NotIn { values: vec![V::Integer { value: 70 }] })), 1);
         assert_eq!(count(cf(Op::Exists)), 2);
         // فیلد بدون مقدار → t3
         assert_eq!(count(FilterNode::Custom(CustomFieldFilter {
             field_key: "confidence".into(),
-            op: Op::Equals(V::Integer(99)),
+            op: Op::Equals { value: V::Integer { value: 99 } },
         })), 0);
     }
 
@@ -812,7 +829,7 @@ mod tests {
             .list_trades(
                 &FilterNode::Custom(CustomFieldFilter {
                     field_key: "setup_note".into(),
-                    op: CustomFieldOp::Contains("نقدینگی".into()),
+                    op: CustomFieldOp::Contains { value: "نقدینگی".into() },
                 }),
                 1,
                 50,
@@ -875,7 +892,7 @@ mod tests {
             .list_trades(
                 &FilterNode::Custom(CustomFieldFilter {
                     field_key: "confidence".into(),
-                    op: CustomFieldOp::Equals(CustomValue::Text("۷۰".into())),
+                    op: CustomFieldOp::Equals { value: CustomValue::Text { value: "۷۰".into() } },
                 }),
                 1,
                 50,
@@ -893,7 +910,7 @@ mod tests {
             .list_trades(
                 &FilterNode::Custom(CustomFieldFilter {
                     field_key: "note_txt".into(),
-                    op: CustomFieldOp::Min(1.0),
+                    op: CustomFieldOp::Min { value: 1.0 },
                 }),
                 1,
                 50,
@@ -922,6 +939,63 @@ mod tests {
         assert!(stats.total_pnl.is_none());
         assert!(stats.max_drawdown.is_none());
         assert!(svc.equity_curve(&FilterNode::empty()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn soft_deleted_trades_excluded_from_all_queries() {
+        let db = db();
+        {
+            let conn = db.lock();
+            seed_trade(&conn, "t1", "acc1", "S", "closed", "2026-02-01T10:00:00Z", Some("2026-02-01T11:00:00Z"), Some(100.0), Some(2.0), None);
+            seed_trade(&conn, "t2", "acc1", "S", "closed", "2026-02-02T10:00:00Z", Some("2026-02-02T11:00:00Z"), Some(-50.0), Some(-1.0), None);
+            // حذف نرم t2
+            conn.execute(
+                "UPDATE journal_trades SET deleted_at = '2026-03-01T00:00:00Z' WHERE id = 't2'",
+                [],
+            )
+            .unwrap();
+        }
+        let svc = QueryService::new(&db);
+        // فهرست
+        let page = svc.list_trades(&FilterNode::empty(), 1, 50).unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].id, "t1");
+        // تجمیع
+        let stats = svc.aggregate(&FilterNode::empty()).unwrap();
+        assert_eq!(stats.total_trades, 1);
+        assert_eq!(stats.closed_trades, 1);
+        assert_eq!(stats.wins, 1);
+        assert_eq!(stats.losses, 0);
+        // منحنی سرمایه — فقط t1
+        let curve = svc.equity_curve(&FilterNode::empty()).unwrap();
+        assert_eq!(curve.len(), 1);
+        assert!((curve[0].cumulative_pnl - 100.0).abs() < 1e-9);
+        // عملکرد گروهی
+        let groups = svc.performance_by(&Dimension::Symbol, &FilterNode::empty()).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].trades, 1);
+        // داشبورد پروجکشن
+        svc.invalidate().unwrap();
+        let dash = svc.dashboard(None).unwrap();
+        let total_rows: i64 = dash.days.iter().map(|d| d.trades_count).sum();
+        assert_eq!(total_rows, 1);
+    }
+
+    #[test]
+    fn performance_by_win_rate_uses_closed_denominator() {
+        let db = db();
+        {
+            let conn = db.lock();
+            // GOLD: یک برد بسته + یک معامله باز → نرخ برد باید ۱۰۰٪ باشد نه ۵۰٪
+            seed_trade(&conn, "t1", "acc1", "GOLD", "closed", "2026-02-01T10:00:00Z", Some("2026-02-01T11:00:00Z"), Some(100.0), Some(2.0), None);
+            seed_trade(&conn, "t2", "acc1", "GOLD", "open", "2026-02-02T10:00:00Z", None, None, None, None);
+        }
+        let svc = QueryService::new(&db);
+        let groups = svc.performance_by(&Dimension::Symbol, &FilterNode::empty()).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].trades, 2);
+        assert_eq!(groups[0].wins, 1);
+        assert!((groups[0].win_rate.unwrap() - 100.0).abs() < 1e-9);
     }
 
     #[test]
@@ -955,10 +1029,10 @@ mod tests {
             .total
         };
         use CustomValue as V;
-        assert_eq!(count(CustomFieldOp::Equals(V::Boolean(true))), 1);
-        assert_eq!(count(CustomFieldOp::Equals(V::Boolean(false))), 1);
-        assert_eq!(count(CustomFieldOp::NotEquals(V::Boolean(true))), 1);
-        assert_eq!(count(CustomFieldOp::In(vec![V::Boolean(true)])), 1);
+        assert_eq!(count(CustomFieldOp::Equals { value: V::Boolean { value: true } }), 1);
+        assert_eq!(count(CustomFieldOp::Equals { value: V::Boolean { value: false } }), 1);
+        assert_eq!(count(CustomFieldOp::NotEquals { value: V::Boolean { value: true } }), 1);
+        assert_eq!(count(CustomFieldOp::In { values: vec![V::Boolean { value: true }] }), 1);
         assert_eq!(count(CustomFieldOp::Exists), 2);
     }
 
@@ -987,12 +1061,12 @@ mod tests {
             )
             .map(|p| p.total)
         };
-        assert_eq!(run(CustomFieldOp::Equals(CustomValue::Text("x".into()))).unwrap_err().code(), 1701);
-        assert_eq!(run(CustomFieldOp::NotEquals(CustomValue::Text("x".into()))).unwrap_err().code(), 1701);
-        assert_eq!(run(CustomFieldOp::In(vec![CustomValue::Text("x".into())])).unwrap_err().code(), 1701);
-        assert_eq!(run(CustomFieldOp::NotIn(vec![CustomValue::Text("x".into())])).unwrap_err().code(), 1701);
+        assert_eq!(run(CustomFieldOp::Equals { value: CustomValue::Text { value: "x".into() } }).unwrap_err().code(), 1701);
+        assert_eq!(run(CustomFieldOp::NotEquals { value: CustomValue::Text { value: "x".into() } }).unwrap_err().code(), 1701);
+        assert_eq!(run(CustomFieldOp::In { values: vec![CustomValue::Text { value: "x".into() }] }).unwrap_err().code(), 1701);
+        assert_eq!(run(CustomFieldOp::NotIn { values: vec![CustomValue::Text { value: "x".into() }] }).unwrap_err().code(), 1701);
         // contains روی json مجاز است
-        assert_eq!(run(CustomFieldOp::Contains("تعجیل".into())).unwrap(), 0);
+        assert_eq!(run(CustomFieldOp::Contains { value: "تعجیل".into() }).unwrap(), 0);
         assert_eq!(run(CustomFieldOp::Exists).unwrap(), 0);
     }
 

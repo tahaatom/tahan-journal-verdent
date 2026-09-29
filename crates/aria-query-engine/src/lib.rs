@@ -13,7 +13,10 @@ pub mod service;
 pub mod stats;
 
 pub use error::QueryError;
-pub use filter::{CustomFieldFilter, CustomFieldOp, CustomValue, FilterNode, TradeFilter, TradeResult};
+pub use filter::{
+    CustomFieldFilter, CustomFieldOp, CustomValue, FilterNode, MAX_FILTER_DEPTH, TradeFilter,
+    TradeResult,
+};
 pub use projection::DailySummaryRow;
 pub use service::{
     DashboardReport, PagedTrades, QueryService, StatFieldInfo, TradeListRow, MAX_PAGE_SIZE,

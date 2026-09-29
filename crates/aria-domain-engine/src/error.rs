@@ -64,6 +64,32 @@ impl DomainError {
         }
     }
 
+    /// واریانت ماشین‌خوان برای بار خطای RPC.
+    pub fn variant(&self) -> &'static str {
+        match self {
+            Self::TradeNotFound { .. } => "trade_not_found",
+            Self::AccountNotFound { .. } => "account_not_found",
+            Self::SymbolNotFound { .. } => "symbol_not_found",
+            Self::InvalidTradeData { .. } => "invalid_trade_data",
+            Self::LegNotFound { .. } => "leg_not_found",
+            Self::ExecutionNotFound { .. } => "execution_not_found",
+            Self::AssignmentConflict { .. } => "assignment_conflict",
+            Self::OverrideError { .. } => "override_error",
+            Self::AttachmentNotFound { .. } => "attachment_not_found",
+            Self::Storage { .. } => "storage",
+        }
+    }
+
+    /// کلید پیام فارسی برای i18n متمرکز.
+    pub fn message_key(&self) -> String {
+        format!("error.domain.{}", self.variant())
+    }
+
+    /// ساخت بار خطای RPC طبق قرارداد `aria_contracts::RpcErrorPayload`.
+    pub fn rpc_payload(&self) -> aria_contracts::RpcErrorPayload {
+        aria_contracts::RpcErrorPayload::new(self.code() as u32, self.variant(), self.message_key())
+    }
+
     pub(crate) fn trade_not_found(id: &str) -> Self {
         Self::TradeNotFound { id: id.to_string(), code: 1401 }
     }
@@ -135,5 +161,14 @@ mod tests {
         let e: DomainError =
             rusqlite::Error::InvalidParameterName("bad".into()).into();
         assert_eq!(e.code(), 1410);
+    }
+
+    #[test]
+    fn rpc_payload_matches_contract_shape() {
+        let e = DomainError::trade_not_found("t1");
+        let p = e.rpc_payload();
+        assert_eq!(p.code, 1401);
+        assert_eq!(p.variant, "trade_not_found");
+        assert_eq!(p.message_key, "error.domain.trade_not_found");
     }
 }

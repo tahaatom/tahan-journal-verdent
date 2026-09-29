@@ -19,6 +19,18 @@ use zeroize::Zeroizing;
 /// پیش‌فرض قفل خودکار: ۹۰۰ ثانیه (۱۵ دقیقه) — همگام با پیکربندی پایه.
 pub const AUTO_LOCK_DEFAULT_SECS: u64 = 15 * 60;
 
+/// حداکثر تلاش ناموفق بازکردن پروفایل در پنجره زمانی (محدودسازی نرخ ورود).
+pub const UNLOCK_RATE_LIMIT_ATTEMPTS: i64 = 5;
+/// پنجره محدودسازی نرخ (ثانیه) — پس از آن شمارش شکست‌ها منقضی می‌شود.
+pub const UNLOCK_RATE_LIMIT_WINDOW_SECS: i64 = 15 * 60;
+
+/// زمان ISO از epoch برای مرز پنجره نرخ.
+pub fn iso_from_epoch(secs: i64) -> String {
+    chrono::DateTime::from_timestamp(secs, 0)
+        .unwrap_or_else(|| chrono::DateTime::from_timestamp(0, 0).expect("epoch"))
+        .to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
+}
+
 /// رکورد گاوصندوق ذخیره‌شده در جدول settings.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -109,7 +121,8 @@ fn b64_decode(s: &str) -> Result<Vec<u8>, SecurityError> {
     Ok(out)
 }
 
-fn now_epoch() -> i64 {
+/// زمان فعلی به ثانیه epoch.
+pub(crate) fn now_epoch() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
@@ -186,6 +199,18 @@ impl ProfileVault {
 
     // ---------------- چرخه حیات گذرواژه ----------------
 
+    /// ثبت رویداد حسابرسی — شکست حسابرسی هرگز عمل اصلی را متوقف نمی‌کند.
+    fn audit(
+        db: &Database,
+        action: &str,
+        target: &str,
+        detail: Option<&serde_json::Value>,
+    ) {
+        if let Err(e) = crate::audit::record_event(db, action, "kernel:security_engine", Some(target), detail) {
+            tracing::warn!(action = action, error = %e, "audit write failed");
+        }
+    }
+
     /// راه‌اندازی اولیه گاوصندوق پروفایل با گذرواژه جدید.
     ///
     /// کلید گاوصندوق تصادفی ساخته، با KDF گذرواژه پوشیده و ذخیره می‌شود.
@@ -207,20 +232,33 @@ impl ProfileVault {
             .expect("vault mutex")
             .insert(profile_id.to_string(), key.clone());
         self.touch();
+        Self::audit(db, "vault.setup", profile_id, None);
         tracing::info!(profile = profile_id, "vault initialized");
         Ok(key)
     }
 
     /// بازکردن پروفایل با گذرواژه — کلید در حافظه امن نگه داشته می‌شود.
+    ///
+    /// محدودسازی نرخ: اگر در پنجره زمانی مجاز، تعداد تلاش‌های ناموفق از حد
+    /// بگذرد، بازکردن تا انقضای پنجره با خطای ۱۲۱۱ رد می‌شود.
     pub fn unlock_profile(
         &self,
         db: &Database,
         profile_id: &str,
         password: &str,
     ) -> Result<VaultKey, SecurityError> {
+        // محدودسازی نرخ تلاش ورود (ذخیره‌شده محلی در حسابرسی)
+        let window_start = iso_from_epoch(now_epoch() - UNLOCK_RATE_LIMIT_WINDOW_SECS);
+        let failures = crate::audit::count_action_since(db, "vault.unlock_failed", &window_start)?;
+        if failures >= UNLOCK_RATE_LIMIT_ATTEMPTS {
+            tracing::warn!(profile = profile_id, failures = failures, "unlock rate limited");
+            return Err(SecurityError::rate_limited(profile_id));
+        }
+
         let record = Self::read_record(db, profile_id)?;
         let ok = kdf::verify_password(&record.verifier, password)?;
         if !ok {
+            Self::audit(db, "vault.unlock_failed", profile_id, None);
             return Err(SecurityError::wrong_password());
         }
         let key = self.unwrap_key(profile_id, &record, password)?;
@@ -229,6 +267,7 @@ impl ProfileVault {
             .expect("vault mutex")
             .insert(profile_id.to_string(), key.clone());
         self.touch();
+        Self::audit(db, "vault.unlock", profile_id, None);
         tracing::info!(profile = profile_id, "profile unlocked");
         Ok(key)
     }
@@ -284,11 +323,13 @@ impl ProfileVault {
         kdf::validate_password(new_password)?;
         let record = Self::read_record(db, profile_id)?;
         if !kdf::verify_password(&record.verifier, current_password)? {
+            Self::audit(db, "vault.change_failed", profile_id, None);
             return Err(SecurityError::wrong_password());
         }
         let key = self.unwrap_key(profile_id, &record, current_password)?;
         self.persist_wrapped(db, profile_id, new_password, &key)?;
         self.touch();
+        Self::audit(db, "vault.password_changed", profile_id, None);
         tracing::info!(profile = profile_id, "password changed");
         Ok(())
     }

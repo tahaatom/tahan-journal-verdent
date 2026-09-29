@@ -88,6 +88,22 @@ pub fn count_action(db: &Database, action: &str) -> Result<i64, SecurityError> {
         .map_err(|e| SecurityError::audit(e.to_string()))
 }
 
+/// شمارش رویدادهای یک اقدام از نقطه زمانی مشخص به بعد (مقایسه لغوی ISO UTC).
+/// برای محدودسازی نرخ تلاش ورود (پنجره زمانی) استفاده می‌شود.
+pub fn count_action_since(
+    db: &Database,
+    action: &str,
+    since_iso: &str,
+) -> Result<i64, SecurityError> {
+    db.lock()
+        .query_row(
+            "SELECT count(*) FROM audit_logs WHERE action = ?1 AND created_at >= ?2",
+            rusqlite::params![action, since_iso],
+            |r| r.get(0),
+        )
+        .map_err(|e| SecurityError::audit(e.to_string()))
+}
+
 /// پل به قرارداد عمومی کرنل — سازگاری با `aria_contracts::AuditProvider`.
 pub struct ContractAuditBridge<'a> {
     pub db: &'a Database,
@@ -163,6 +179,18 @@ mod tests {
         assert_eq!(count_action(&db, "failed_login").unwrap(), 2);
         assert_eq!(count_action(&db, "login").unwrap(), 1);
         assert_eq!(count_action(&db, "nonexistent").unwrap(), 0);
+    }
+
+    #[test]
+    fn count_action_since_filters_by_window() {
+        let db = setup_db();
+        record_event(&db, "failed_login", "ui", None, None).unwrap();
+        record_event(&db, "failed_login", "ui", None, None).unwrap();
+        // پنجره‌ای که کل گذشته را می‌پوشاند → همه شمرده می‌شوند
+        let all_time = "2000-01-01T00:00:00Z";
+        assert_eq!(count_action_since(&db, "failed_login", all_time).unwrap(), 2);
+        // پنجره‌ای در آینده → هیچ
+        assert_eq!(count_action_since(&db, "failed_login", "2999-01-01T00:00:00Z").unwrap(), 0);
     }
 
     #[test]

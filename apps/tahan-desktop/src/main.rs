@@ -48,8 +48,27 @@ struct TradesPage {
     page_size: u32,
 }
 
-fn kernel_error(e: aria_query_engine::QueryError) -> String {
-    format!("{} (کد {})", e, e.code())
+/// خطای تایپ‌دار پل IPC — فرانت‌اند همیشه {code, message} می‌گیرد، نه رشته خام.
+/// کدهای کرنل از بازه‌های قراردادی می‌آیند (۱۱۰۰+ ذخیره‌سازی، ۱۷۰۰+ پرس‌وجو…)؛
+/// خطاهای محلی پل با کد ۰ (نامشخص) گزارش می‌شوند.
+#[derive(Serialize, Clone)]
+struct CmdError {
+    code: i64,
+    message: String,
+}
+
+impl CmdError {
+    fn new(code: i64, message: impl Into<String>) -> Self {
+        Self { code, message: message.into() }
+    }
+}
+
+fn kernel_error(e: aria_query_engine::QueryError) -> CmdError {
+    CmdError::new(e.code(), e.to_string())
+}
+
+fn kernel_not_open() -> CmdError {
+    CmdError::new(0, "هسته هنوز باز نشده است")
 }
 
 #[tauri::command]
@@ -76,7 +95,7 @@ fn kernel_status(state: State<'_, Mutex<KernelState>>) -> KernelStatus {
 fn kernel_open(
     app: AppHandle,
     state: State<'_, Mutex<KernelState>>,
-) -> Result<KernelStatus, String> {
+) -> Result<KernelStatus, CmdError> {
     let mut st = state.lock().unwrap();
     if st.opened {
         return Ok(KernelStatus {
@@ -84,11 +103,12 @@ fn kernel_open(
             mode: "memory",
         });
     }
-    let db = Database::open_memory(None).map_err(|e| format!("خطای باز کردن هسته: {e}"))?;
+    let db = Database::open_memory(None)
+        .map_err(|e| CmdError::new(0, format!("خطای باز کردن هسته: {e}")))?;
     {
         let mut conn = db.lock();
         migrations::run_migrations(&mut conn, |_| Ok(()))
-            .map_err(|e| format!("خطای مهاجرت اسکیما: {e}"))?;
+            .map_err(|e| CmdError::new(0, format!("خطای مهاجرت اسکیما: {e}")))?;
     }
     st.db = Some(db);
     st.opened = true;
@@ -107,14 +127,11 @@ fn query_trades(
     filter: serde_json::Value,
     page: u32,
     page_size: u32,
-) -> Result<TradesPage, String> {
+) -> Result<TradesPage, CmdError> {
     let st = state.lock().unwrap();
-    let db = st
-        .db
-        .as_ref()
-        .ok_or_else(|| "هسته هنوز باز نشده است".to_string())?;
-    let node: aria_query_engine::FilterNode =
-        serde_json::from_value(filter).map_err(|e| format!("فیلتر نامعتبر: {e}"))?;
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    let node: aria_query_engine::FilterNode = serde_json::from_value(filter)
+        .map_err(|e| CmdError::new(aria_query_engine::QueryError::INVALID_QUERY, format!("فیلتر نامعتبر: {e}")))?;
     let svc = QueryService::new(db);
     let p = svc
         .list_trades(&node, page, page_size)
@@ -132,14 +149,11 @@ fn query_trades(
 fn core_stats(
     state: State<'_, Mutex<KernelState>>,
     filter: serde_json::Value,
-) -> Result<aria_query_engine::CoreStats, String> {
+) -> Result<aria_query_engine::CoreStats, CmdError> {
     let st = state.lock().unwrap();
-    let db = st
-        .db
-        .as_ref()
-        .ok_or_else(|| "هسته هنوز باز نشده است".to_string())?;
-    let node: aria_query_engine::FilterNode =
-        serde_json::from_value(filter).map_err(|e| format!("فیلتر نامعتبر: {e}"))?;
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    let node: aria_query_engine::FilterNode = serde_json::from_value(filter)
+        .map_err(|e| CmdError::new(aria_query_engine::QueryError::INVALID_QUERY, format!("فیلتر نامعتبر: {e}")))?;
     QueryService::new(db)
         .aggregate(&node)
         .map_err(kernel_error)
@@ -150,12 +164,9 @@ fn core_stats(
 fn dashboard_summary(
     state: State<'_, Mutex<KernelState>>,
     account_id: Option<String>,
-) -> Result<DashboardReport, String> {
+) -> Result<DashboardReport, CmdError> {
     let st = state.lock().unwrap();
-    let db = st
-        .db
-        .as_ref()
-        .ok_or_else(|| "هسته هنوز باز نشده است".to_string())?;
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
     QueryService::new(db)
         .dashboard(account_id.as_deref())
         .map_err(kernel_error)
@@ -163,12 +174,9 @@ fn dashboard_summary(
 
 /// فیلدهای سفارشی دارای مجوز آمار/تحلیل.
 #[tauri::command]
-fn stat_fields(state: State<'_, Mutex<KernelState>>) -> Result<Vec<StatFieldInfo>, String> {
+fn stat_fields(state: State<'_, Mutex<KernelState>>) -> Result<Vec<StatFieldInfo>, CmdError> {
     let st = state.lock().unwrap();
-    let db = st
-        .db
-        .as_ref()
-        .ok_or_else(|| "هسته هنوز باز نشده است".to_string())?;
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
     QueryService::new(db).stat_fields().map_err(kernel_error)
 }
 
@@ -177,9 +185,9 @@ fn stat_fields(state: State<'_, Mutex<KernelState>>) -> Result<Vec<StatFieldInfo
 fn ui_extensions(
     state: State<'_, Mutex<KernelState>>,
     kind: String,
-) -> Result<Vec<serde_json::Value>, String> {
-    let parsed =
-        ExtensionKind::parse(&kind).ok_or_else(|| format!("نقطه اعلانی نامعتبر: {kind}"))?;
+) -> Result<Vec<serde_json::Value>, CmdError> {
+    let parsed = ExtensionKind::parse(&kind)
+        .ok_or_else(|| CmdError::new(0, format!("نقطه اعلانی نامعتبر: {kind}")))?;
     let st = state.lock().unwrap();
     Ok(st.ui_registry.snapshot(parsed))
 }

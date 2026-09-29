@@ -18,12 +18,31 @@ export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+/** خطای تایپ‌دار پل IPC — مطابق `CmdError` سمت کرنل (main.rs). */
+export interface CmdError {
+  /** کد قراردادی کرنل (۱۱۰۰+ ذخیره‌سازی، ۱۷۰۰+ پرس‌وجو…)؛ ۰ = خطای محلی پل/نامشخص */
+  code: number;
+  message: string;
+}
+
+/** نرمال‌سازی هر رد‌شدنی به خطای تایپ‌دار — هرگز رشته خام به UI نمی‌رسد. */
+export function parseCmdError(raw: unknown): CmdError {
+  if (raw && typeof raw === "object" && "code" in raw && "message" in raw) {
+    const e = raw as { code?: unknown; message?: unknown };
+    if (typeof e.code === "number" && typeof e.message === "string") {
+      return { code: e.code, message: e.message };
+    }
+  }
+  if (raw instanceof Error) return { code: 0, message: raw.message };
+  return { code: 0, message: String(raw) };
+}
+
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!isTauri()) {
-    return Promise.reject(new Error("kernel-unavailable"));
+    return Promise.reject(parseCmdError("kernel-unavailable"));
   }
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<T>(cmd, args);
+  return invoke<T>(cmd, args).catch((e) => Promise.reject(parseCmdError(e)));
 }
 
 export interface CoreStats {

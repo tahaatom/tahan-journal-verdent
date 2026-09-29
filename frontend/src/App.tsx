@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PageId } from "./kernel";
+import { isTauri, kernelOpen } from "./kernel";
 import { CommandPalette } from "./components/CommandPalette";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EmptyState } from "./components/States";
@@ -46,6 +47,15 @@ export default function App() {
   const [page, setPage] = useState<PageId>("dashboard");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const titles = usePageTitle();
+
+  // راه‌اندازی هسته هنگام اجرای پوسته — در مرورگر/تست بی‌اثر است
+  useEffect(() => {
+    if (isTauri()) {
+      kernelOpen().catch(() => {
+        // خطای راه‌اندازی در فاز ۱.۱۰ صرفاً ثبت می‌شود؛ پوسته پایدار می‌ماند
+      });
+    }
+  }, []);
 
   // میان‌بر سراسری Ctrl+K برای پالت فرمان
   useEffect(() => {

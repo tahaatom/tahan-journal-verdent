@@ -33,6 +33,6 @@ mod tests {
 
     #[test]
     fn crate_smoke() {
-        assert_eq!(version::DATABASE_SCHEMA_VERSION, 1);
+        assert_eq!(version::DATABASE_SCHEMA_VERSION, 2);
     }
 }

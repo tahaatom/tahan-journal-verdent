@@ -91,7 +91,8 @@ impl KernelConfig {
         Self::load_from(&standard_config_path())
     }
 
-    /// ذخیره پیکربندی در مسیر مشخص.
+    /// ذخیره پیکربندی در مسیر مشخص — نوشتن اتمیک (فایل موقت + تغییرنام).
+    /// خرابی در میانه نوشتن هرگز فایل پیکربندی موجود را خراب نمی‌کند.
     pub fn save_to(&self, path: &Path) -> Result<(), FoundationError> {
         self.validate()?;
         if let Some(parent) = path.parent() {
@@ -101,7 +102,14 @@ impl KernelConfig {
         }
         let content = serde_json::to_string_pretty(self)
             .map_err(|e| FoundationError::config_parse(e.to_string()))?;
-        std::fs::write(path, content).map_err(|_| {
+        // فایل موقت در همان پوشه (برای اتمیک بودن rename روی همان فایل‌سیستم)
+        let tmp_path = path.with_extension("json.tmp");
+        std::fs::write(&tmp_path, content).map_err(|_| {
+            FoundationError::ConfigSaveFailed { path: tmp_path.display().to_string(), code: 1003 }
+        })?;
+        std::fs::rename(&tmp_path, path).map_err(|_| {
+            // تلاش برای پاک‌سازی فایل موقت؛ شکست پاک‌سازی اهمیتی ندارد
+            let _ = std::fs::remove_file(&tmp_path);
             FoundationError::ConfigSaveFailed { path: path.display().to_string(), code: 1003 }
         })?;
         Ok(())
@@ -195,6 +203,21 @@ mod tests {
         c.theme = "dark".to_string();
         c.auto_lock_timeout_secs = 0;
         assert!(matches!(c.validate(), Err(FoundationError::InvalidConfigValue { .. })));
+    }
+
+    #[test]
+    fn save_to_is_atomic_no_tmp_left_behind() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("cfg/config.json");
+        let c = KernelConfig { theme: "dark".to_string(), ..Default::default() };
+        c.save_to(&p).unwrap();
+        // فایل موقت باید بعد از نوشتن موفق حذف شده باشد
+        let tmp_file = p.with_extension("json.tmp");
+        assert!(!tmp_file.exists());
+        assert!(p.exists());
+        // ذخیره دوباره روی فایل موجود — مسیر rename جایگزین هم کار می‌کند
+        c.save_to(&p).unwrap();
+        assert!(KernelConfig::load_from(&p).unwrap() == c);
     }
 
     #[test]

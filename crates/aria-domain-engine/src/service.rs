@@ -14,7 +14,7 @@ use crate::model::{parse_direction, Direction, EntryLeg, Execution, ExitLeg, Man
 use crate::risk::{compute_trade_risk, EntryLegInput, ExitLegInput};
 use aria_contracts::{CommandEnvelope, EventEnvelope};
 use aria_storage_engine::Database;
-use rusqlite::{params, Transaction};
+use rusqlite::{params, Connection, Transaction};
 use uuid::Uuid;
 
 /// انواع موجودیت مجاز برای بازنویسی دستی.
@@ -283,12 +283,37 @@ impl<'a> DomainService<'a> {
             params![id, c.trade_id, c.planned_price, c.executed_price, c.volume,
                     c.stop_loss, c.take_profit, c.entry_time, c.note, now],
         )?;
+        // قرارداد دامنه: معامله دستی → ساخت Execution دستی و اتصال خودش به پا
+        if let Some(price) = c.executed_price {
+            let direction: String = tx.query_row(
+                "SELECT direction FROM journal_trades WHERE id = ?1",
+                params![c.trade_id],
+                |r| r.get(0),
+            )?;
+            tx.execute(
+                "INSERT INTO executions (id, trade_id, leg_id, leg_kind, kind, direction,
+                 price, volume, executed_at, assignment_status, created_at)
+                 VALUES (?1,?2,?3,'entry','manual',?4,?5,?6,?7,'assigned',?8)",
+                params![
+                    Uuid::new_v4().to_string(),
+                    c.trade_id,
+                    id,
+                    direction,
+                    price,
+                    c.volume,
+                    c.entry_time.clone().unwrap_or_else(|| now.clone()),
+                    now
+                ],
+            )?;
+        }
         self.recompute_risk_tx(tx, &c.trade_id)?;
         Ok(id)
     }
 
     fn update_entry_leg(&self, tx: &Transaction<'_>, c: &UpdateEntryLegCommand) -> Result<String, DomainError> {
         let trade_id = self.leg_trade_id(tx, "entry_legs", &c.leg_id)?;
+        // پاهای معامله حذف‌نرم‌شده تغییرناپذیرند
+        self.require_live_trade(tx, &trade_id)?;
         if let Some(v) = c.volume {
             if v <= 0.0 || !v.is_finite() {
                 return Err(DomainError::invalid("volume must be positive and finite"));
@@ -317,6 +342,24 @@ impl<'a> DomainService<'a> {
         values.push(rusqlite::types::Value::Text(c.leg_id.clone()));
         let sql = format!("UPDATE entry_legs SET {}, updated_at = ? WHERE id = ?", clauses.join(", "));
         tx.execute(&sql, rusqlite::params_from_iter(values.iter()))?;
+        // هم‌گام‌سازی اجرای دستی پیوسته به پا (قیمت/حجم/زمان)
+        for (col, v) in [
+            ("price", c.executed_price.map(rusqlite::types::Value::Real)),
+            ("volume", c.volume.map(rusqlite::types::Value::Real)),
+            ("executed_at", c.entry_time.clone().map(rusqlite::types::Value::Text)),
+        ] {
+            if let Some(val) = v {
+                tx.execute(
+                    &format!(
+                        "UPDATE executions SET {col} = ?1 WHERE leg_id = ?2 AND kind = 'manual'"
+                    ),
+                    rusqlite::params_from_iter([
+                        val,
+                        rusqlite::types::Value::Text(c.leg_id.clone()),
+                    ]),
+                )?;
+            }
+        }
         self.recompute_risk_tx(tx, &trade_id)?;
         Ok(trade_id)
     }
@@ -335,12 +378,37 @@ impl<'a> DomainService<'a> {
             params![id, c.trade_id, c.exit_reason, c.executed_price, c.volume,
                     c.exit_time, c.note, now],
         )?;
+        // قرارداد دامنه: معامله دستی → ساخت Execution دستی و اتصال خودش به پا
+        if let Some(price) = c.executed_price {
+            let direction: String = tx.query_row(
+                "SELECT direction FROM journal_trades WHERE id = ?1",
+                params![c.trade_id],
+                |r| r.get(0),
+            )?;
+            tx.execute(
+                "INSERT INTO executions (id, trade_id, leg_id, leg_kind, kind, direction,
+                 price, volume, executed_at, assignment_status, created_at)
+                 VALUES (?1,?2,?3,'exit','manual',?4,?5,?6,?7,'assigned',?8)",
+                params![
+                    Uuid::new_v4().to_string(),
+                    c.trade_id,
+                    id,
+                    direction,
+                    price,
+                    c.volume,
+                    c.exit_time.clone().unwrap_or_else(|| now.clone()),
+                    now
+                ],
+            )?;
+        }
         self.recompute_risk_tx(tx, &c.trade_id)?;
         Ok(id)
     }
 
     fn update_exit_leg(&self, tx: &Transaction<'_>, c: &UpdateExitLegCommand) -> Result<String, DomainError> {
         let trade_id = self.leg_trade_id(tx, "exit_legs", &c.leg_id)?;
+        // پاهای معامله حذف‌نرم‌شده تغییرناپذیرند
+        self.require_live_trade(tx, &trade_id)?;
         if let Some(v) = c.volume {
             if v <= 0.0 || !v.is_finite() {
                 return Err(DomainError::invalid("volume must be positive and finite"));
@@ -367,24 +435,42 @@ impl<'a> DomainService<'a> {
         values.push(rusqlite::types::Value::Text(c.leg_id.clone()));
         let sql = format!("UPDATE exit_legs SET {}, updated_at = ? WHERE id = ?", clauses.join(", "));
         tx.execute(&sql, rusqlite::params_from_iter(values.iter()))?;
+        // هم‌گام‌سازی اجرای دستی پیوسته به پا (قیمت/حجم/زمان)
+        for (col, v) in [
+            ("price", c.executed_price.map(rusqlite::types::Value::Real)),
+            ("volume", c.volume.map(rusqlite::types::Value::Real)),
+            ("executed_at", c.exit_time.clone().map(rusqlite::types::Value::Text)),
+        ] {
+            if let Some(val) = v {
+                tx.execute(
+                    &format!(
+                        "UPDATE executions SET {col} = ?1 WHERE leg_id = ?2 AND kind = 'manual'"
+                    ),
+                    rusqlite::params_from_iter([
+                        val,
+                        rusqlite::types::Value::Text(c.leg_id.clone()),
+                    ]),
+                )?;
+            }
+        }
         self.recompute_risk_tx(tx, &trade_id)?;
         Ok(trade_id)
     }
 
     fn assign_execution_to_leg(&self, tx: &Transaction<'_>, c: &AssignExecutionToLegCommand) -> Result<String, DomainError> {
         // اجرا باید وجود داشته باشد
-        let exec: Option<(Option<String>, String)> = tx
+        let exec: Option<(Option<String>, String, String)> = tx
             .query_row(
-                "SELECT trade_id, assignment_status FROM executions WHERE id = ?1",
+                "SELECT trade_id, assignment_status, direction FROM executions WHERE id = ?1",
                 params![c.execution_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .map(Some)
             .or_else(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
                 other => Err(other),
             })?;
-        let (exec_trade, _status) =
+        let (exec_trade, _status, exec_direction) =
             exec.ok_or_else(|| DomainError::execution_not_found(&c.execution_id))?;
 
         // نوع پا را با جست‌وجوی هر دو جدول می‌یابیم
@@ -410,10 +496,41 @@ impl<'a> DomainService<'a> {
             }
         }
 
+        // راست‌آزمایی جهت — اجرای «assigned» باید هم‌جهت با معامله باشد؛
+        // اجرای «needs_assignment» وارداتی جهت موقتی دارد و جهت قطعی معامله
+        // معیار است (نرمال‌سازی در لحظه تخصیص).
+        let trade_direction: String = tx.query_row(
+            "SELECT direction FROM journal_trades WHERE id = ?1",
+            params![leg_trade],
+            |r| r.get(0),
+        )?;
+        if exec_direction != trade_direction {
+            if _status != "needs_assignment" {
+                return Err(DomainError::assignment_conflict(format!(
+                    "execution direction {exec_direction} does not match trade direction {trade_direction}"
+                )));
+            }
+            tx.execute(
+                "UPDATE executions SET direction = ?1 WHERE id = ?2",
+                params![trade_direction, c.execution_id],
+            )?;
+        }
+
         tx.execute(
             "UPDATE executions SET trade_id = ?1, leg_id = ?2, leg_kind = ?3,
              assignment_status = 'assigned' WHERE id = ?4",
             params![leg_trade, c.leg_id, leg_kind, c.execution_id],
+        )?;
+        // حسابرسی تخصیص — تصمیم مؤثر بر PnL باید ردیابی‌پذیر باشد
+        tx.execute(
+            "INSERT INTO audit_logs (id, action, actor, target, detail, created_at)
+             VALUES (?1, 'execution.assign', 'kernel:domain_engine', ?2, ?3, ?4)",
+            params![
+                Uuid::new_v4().to_string(),
+                leg_trade,
+                format!("execution {} assigned to {} leg {}", c.execution_id, leg_kind, c.leg_id),
+                now_iso()
+            ],
         )?;
         self.recompute_risk_tx(tx, &leg_trade)?;
         Ok(leg_trade)
@@ -431,6 +548,10 @@ impl<'a> DomainService<'a> {
                 "journal_trade" => DomainError::trade_not_found(&c.entity_id),
                 _ => DomainError::leg_not_found(&c.entity_id),
             });
+        }
+        // موجودیت باید زنده باشد — روی معامله حذف‌نرم‌شده بازنویسی مجاز نیست
+        if let Some(tid) = self.trade_id_of_entity(tx, &c.entity_type, &c.entity_id)? {
+            self.require_live_trade(tx, &tid)?;
         }
         let id = Uuid::new_v4().to_string();
         tx.execute(
@@ -653,7 +774,10 @@ impl<'a> DomainService<'a> {
         let mut stmt = conn.prepare_cached(
             "SELECT id, trade_id, planned_price, executed_price, volume, stop_loss,
              take_profit, entry_time, note, created_at, updated_at
-             FROM entry_legs WHERE trade_id = ?1 ORDER BY created_at",
+             FROM entry_legs WHERE trade_id = ?1
+               AND EXISTS (SELECT 1 FROM journal_trades t
+                           WHERE t.id = entry_legs.trade_id AND t.deleted_at IS NULL)
+             ORDER BY created_at",
         )?;
         let rows = stmt.query_map(params![trade_id], |r| {
             Ok(EntryLeg {
@@ -678,7 +802,10 @@ impl<'a> DomainService<'a> {
         let conn = self.db.lock();
         let mut stmt = conn.prepare_cached(
             "SELECT id, trade_id, exit_reason, executed_price, volume, exit_time, note,
-             created_at, updated_at FROM exit_legs WHERE trade_id = ?1 ORDER BY created_at",
+             created_at, updated_at FROM exit_legs WHERE trade_id = ?1
+               AND EXISTS (SELECT 1 FROM journal_trades t
+                           WHERE t.id = exit_legs.trade_id AND t.deleted_at IS NULL)
+             ORDER BY created_at",
         )?;
         let rows = stmt.query_map(params![trade_id], |r| {
             Ok(ExitLeg {
@@ -702,7 +829,10 @@ impl<'a> DomainService<'a> {
         let mut stmt = conn.prepare_cached(
             "SELECT id, trade_id, leg_id, leg_kind, source_record_id, kind, direction, price,
              volume, executed_at, commission, swap, ticket, magic, comment, assignment_status,
-             created_at FROM executions WHERE trade_id = ?1 ORDER BY executed_at",
+             created_at FROM executions WHERE trade_id = ?1
+               AND EXISTS (SELECT 1 FROM journal_trades t
+                           WHERE t.id = executions.trade_id AND t.deleted_at IS NULL)
+             ORDER BY executed_at",
         )?;
         let rows = stmt.query_map(params![trade_id], map_execution_row)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -711,6 +841,10 @@ impl<'a> DomainService<'a> {
     /// بازنویسی‌های یک موجودیت.
     pub fn overrides_of(&self, entity_type: &str, entity_id: &str, include_reverted: bool) -> Result<Vec<ManualOverride>, DomainError> {
         let conn = self.db.lock();
+        // موجودیت متعلق به معامله حذف‌نرم‌شده → بازنویسی‌هایش هم پنهان است
+        if entity_hidden_by_soft_delete(&conn, entity_type, entity_id)? {
+            return Ok(vec![]);
+        }
         let filter = if include_reverted { "" } else { " AND reverted_at IS NULL" };
         let sql = format!(
             "SELECT id, entity_type, entity_id, field_name, previous_value, new_value, reason,
@@ -731,6 +865,10 @@ impl<'a> DomainService<'a> {
         }
         let table = table_of(entity_type);
         let conn = self.db.lock();
+        // موجودیت متعلق به معامله حذف‌نرم‌شده → مانند یافت‌نشدن
+        if entity_hidden_by_soft_delete(&conn, entity_type, entity_id)? {
+            return Ok(None);
+        }
         let mut stmt = conn.prepare(&format!("SELECT * FROM {table} WHERE id = ?1"))?;
         // نام ستون‌ها قبل از ساخت query خوانده می‌شود (stmt موقتاً به rows قرض داده می‌شود)
         let names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
@@ -771,9 +909,10 @@ impl<'a> DomainService<'a> {
     /// رویدادهای منتشرنشده outbox (برای انتشار پس از commit).
     pub fn unpublished_events(&self, limit: usize) -> Result<Vec<EventEnvelope>, DomainError> {
         let conn = self.db.lock();
+        // ترتیب قطعی: زمان ایجاد سپس ترتیب درج (rowid)
         let mut stmt = conn.prepare_cached(
             "SELECT id, event_type, event_version, source, correlation_id, payload, created_at
-             FROM system_events WHERE published = 0 ORDER BY created_at LIMIT ?1",
+             FROM system_events WHERE published = 0 ORDER BY created_at, rowid LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], |r| {
             Ok((
@@ -783,11 +922,12 @@ impl<'a> DomainService<'a> {
                 r.get::<_, String>(3)?,
                 r.get::<_, String>(4)?,
                 r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
             ))
         })?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, event_type, version, source, correlation, payload) = row?;
+            let (id, event_type, version, source, correlation, payload, created_at) = row?;
             let event_id = Uuid::parse_str(&id)
                 .map_err(|e| DomainError::storage(format!("bad event_id in outbox: {e}")))?;
             let correlation_id = Uuid::parse_str(&correlation)
@@ -798,12 +938,16 @@ impl<'a> DomainService<'a> {
                 "domain_engine" => aria_contracts::EventSource::DomainEngine,
                 other => aria_contracts::EventSource::Other(other.to_string()),
             };
+            // زمان رویداد از خود ردیف outbox می‌آید، نه از لحاظ خواندن
+            let timestamp = chrono::DateTime::parse_from_rfc3339(&created_at)
+                .map(|d| d.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|_| chrono::Utc::now());
             out.push(EventEnvelope {
                 event_id,
                 event_type,
                 event_version: version as u32,
                 source,
-                timestamp: chrono::Utc::now(),
+                timestamp,
                 correlation_id,
                 payload,
             });
@@ -899,6 +1043,38 @@ fn table_of(entity_type: &str) -> &'static str {
         "exit_leg" => "exit_legs",
         _ => "journal_trades",
     }
+}
+
+/// آیا موجودیت به معامله‌ای تعلق دارد که حذف نرم شده است؟
+/// برای موجودیت‌های ناشناخته false برمی‌گرداند (رفتار پیشین حفظ می‌شود).
+fn entity_hidden_by_soft_delete(
+    conn: &Connection,
+    entity_type: &str,
+    entity_id: &str,
+) -> Result<bool, DomainError> {
+    let related_trade: Option<String> = match entity_type {
+        "journal_trade" => Some(entity_id.to_string()),
+        "entry_leg" | "exit_leg" => conn
+            .query_row(
+                &format!("SELECT trade_id FROM {} WHERE id = ?1", table_of(entity_type)),
+                params![entity_id],
+                |r| r.get(0),
+            )
+            .map(Some)
+            .unwrap_or(None),
+        _ => None,
+    };
+    let Some(trade_id) = related_trade else {
+        return Ok(false);
+    };
+    let deleted: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM journal_trades WHERE id = ?1",
+            params![trade_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(None);
+    Ok(deleted.is_some())
 }
 
 /// نوشتن رویداد در outbox داخل تراکنش جاری.
@@ -1020,6 +1196,7 @@ fn map_override_row(r: &rusqlite::Row<'_>) -> Result<ManualOverride, rusqlite::E
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::LegKind;
 
     fn db() -> Database {
         let db = Database::open_memory(Some("test-pass-1")).unwrap();
@@ -1353,6 +1530,154 @@ mod tests {
         assert_eq!(status2, "calculated");
         assert_eq!(pnl2, Some(1500.0));
         assert_eq!(r2, Some(1.5));
+        // جهت اجرای وارداتی در لحظه تخصیص به جهت قطعی معامله نرمال شد
+        let normalized: String = {
+            let conn = db.lock();
+            conn.query_row("SELECT direction FROM executions WHERE id = 'e1'", [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(normalized, "buy");
+        // حسابرسی تخصیص ثبت شده است
+        let audit_count: i64 = {
+            let conn = db.lock();
+            conn.query_row(
+                "SELECT COUNT(*) FROM audit_logs WHERE action = 'execution.assign' AND target = ?1",
+                params![trade_id],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(audit_count, 1);
+    }
+
+    #[test]
+    fn assigned_execution_direction_mismatch_rejected_1407() {
+        let db = db();
+        let (a, s) = setup_account_symbol(&db);
+        let trade_id = create_trade(&db, &a, &s, Some(90.0)); // buy
+        let leg = add_entry(&db, &trade_id, 100.0, 1.0);
+        // اجرای assigned با جهت مخالف — داده معیوب باید در ورودی رد شود
+        {
+            let conn = db.lock();
+            conn.execute(
+                "INSERT INTO executions (id, trade_id, kind, direction, price, volume, assignment_status, created_at)
+                 VALUES ('e2', ?1, 'manual', 'sell', 100.0, 1.0, 'assigned', '2026-09-28T09:00:00Z')",
+                params![trade_id],
+            )
+            .unwrap();
+        }
+        let service = svc(&db);
+        let err = service
+            .execute(&env(command_type::ASSIGN_EXECUTION_TO_LEG, AssignExecutionToLegCommand {
+                execution_id: "e2".into(),
+                leg_id: leg,
+            }))
+            .unwrap_err();
+        assert_eq!(err.code(), 1407);
+    }
+
+    #[test]
+    fn manual_leg_with_executed_price_creates_manual_execution() {
+        let db = db();
+        let (a, s) = setup_account_symbol(&db);
+        let trade_id = create_trade(&db, &a, &s, Some(90.0));
+        let entry_leg = add_entry(&db, &trade_id, 100.0, 1.0);
+        let exit_leg = add_exit(&db, &trade_id, 115.0, 1.0);
+        let execs = svc(&db).executions(&trade_id).unwrap();
+        assert_eq!(execs.len(), 2);
+        assert!(execs.iter().all(|e| e.kind == "manual" && e.assignment_status == "assigned"));
+        assert!(execs.iter().any(|e| e.leg_id.as_deref() == Some(entry_leg.as_str())
+            && e.leg_kind == Some(LegKind::Entry)));
+        assert!(execs.iter().any(|e| e.leg_id.as_deref() == Some(exit_leg.as_str())
+            && e.leg_kind == Some(LegKind::Exit)));
+        // هم‌گام‌سازی ویرایش پا با اجرای دستی
+        let service = svc(&db);
+        service
+            .execute(&env(command_type::UPDATE_ENTRY_LEG, UpdateEntryLegCommand {
+                leg_id: entry_leg,
+                planned_price: None,
+                executed_price: Some(101.0),
+                volume: Some(2.0),
+                stop_loss: None,
+                take_profit: None,
+                entry_time: None,
+                note: None,
+            }))
+            .unwrap();
+        let execs = service.executions(&trade_id).unwrap();
+        let entry_exec = execs.iter().find(|e| e.leg_kind == Some(LegKind::Entry)).unwrap();
+        assert_eq!(entry_exec.price, 101.0);
+        assert_eq!(entry_exec.volume, 2.0);
+    }
+
+    #[test]
+    fn soft_deleted_trade_hides_legs_executions_overrides_and_effective() {
+        let db = db();
+        let (a, s) = setup_account_symbol(&db);
+        let trade_id = create_trade(&db, &a, &s, Some(90.0));
+        let leg = add_entry(&db, &trade_id, 100.0, 1.0);
+        let service = svc(&db);
+        service
+            .execute(&env(command_type::ADD_MANUAL_OVERRIDE, AddManualOverrideCommand {
+                entity_type: "journal_trade".into(),
+                entity_id: trade_id.clone(),
+                field_name: "note".into(),
+                previous_value: None,
+                new_value: Some("یادداشت".into()),
+                reason: Some("اصلاح".into()),
+                source: "user".into(),
+                priority: 1,
+                reversible: true,
+                created_by: "tester".into(),
+            }))
+            .unwrap();
+        assert!(!service.entry_legs(&trade_id).unwrap().is_empty());
+        assert!(service.effective_entity("journal_trade", &trade_id).unwrap().is_some());
+        assert_eq!(service.overrides_of("journal_trade", &trade_id, false).unwrap().len(), 1);
+
+        // حذف نرم
+        service
+            .execute(&env(command_type::DELETE_TRADE, DeleteTradeCommand {
+                trade_id: trade_id.clone(),
+                reason: Some("test".into()),
+            }))
+            .unwrap();
+
+        // همه خواندنی‌های فرعی خالی/یافت‌نشده می‌شوند
+        assert!(service.entry_legs(&trade_id).unwrap().is_empty());
+        assert!(service.executions(&trade_id).unwrap().is_empty());
+        assert!(service.overrides_of("journal_trade", &trade_id, false).unwrap().is_empty());
+        assert!(service.effective_entity("journal_trade", &trade_id).unwrap().is_none());
+
+        // ویرایش پا و بازنویسی جدید روی معامله حذف‌شده رد می‌شود (۱۴۰۱)
+        let err = service
+            .execute(&env(command_type::UPDATE_ENTRY_LEG, UpdateEntryLegCommand {
+                leg_id: leg,
+                planned_price: None,
+                executed_price: Some(102.0),
+                volume: None,
+                stop_loss: None,
+                take_profit: None,
+                entry_time: None,
+                note: None,
+            }))
+            .unwrap_err();
+        assert_eq!(err.code(), 1401);
+        let err = service
+            .execute(&env(command_type::ADD_MANUAL_OVERRIDE, AddManualOverrideCommand {
+                entity_type: "journal_trade".into(),
+                entity_id: trade_id.clone(),
+                field_name: "note".into(),
+                previous_value: None,
+                new_value: Some("x".into()),
+                reason: None,
+                source: "user".into(),
+                priority: 1,
+                reversible: true,
+                created_by: "tester".into(),
+            }))
+            .unwrap_err();
+        assert_eq!(err.code(), 1401);
     }
 
     #[test]

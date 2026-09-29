@@ -43,6 +43,12 @@ impl SemVer {
             if !p.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '.' || ch == '-') {
                 return Err(format!("invalid prerelease: {p}"));
             }
+            // شناسه عددی پیش‌انتشار نباید صفر پیش‌رو داشته باشد (مثل 1.0.0-01)
+            for ident in p.split('.') {
+                if ident.len() > 1 && ident.starts_with('0') && ident.chars().all(|ch| ch.is_ascii_digit()) {
+                    return Err(format!("invalid prerelease (leading zero in numeric identifier): {p}"));
+                }
+            }
         }
         let parts: Vec<&str> = core.split('.').collect();
         if parts.len() != 3 {
@@ -236,6 +242,14 @@ mod tests {
         // build metadata نادیده گرفته می‌شود
         assert_eq!(v("10.20.30-rc.2+x7").prerelease.as_deref(), Some("rc.2"));
         assert_eq!(v("1.2.3+build"), v("1.2.3"));
+    }
+
+    #[test]
+    fn parse_rejects_leading_zero_in_prerelease_identifier() {
+        assert!(SemVer::parse("1.0.0-01").is_err());
+        assert!(SemVer::parse("1.0.0-rc.01").is_err());
+        assert!(SemVer::parse("1.0.0-0").is_ok()); // تک‌صفر مجاز
+        assert!(SemVer::parse("1.0.0-0alpha").is_ok()); // الفبایی-عددی مجاز
     }
 
     #[test]

@@ -11,7 +11,7 @@ use crate::schema_v1::SCHEMA_V1;
 use rusqlite::Connection;
 
 /// نسخه فعلی اسکیما (همگام با aria-contracts::DATABASE_SCHEMA_VERSION).
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const CURRENT_SCHEMA_VERSION: i64 = 2;
 
 /// یک مهاجرت نسخه‌دار.
 pub struct Migration {
@@ -21,11 +21,23 @@ pub struct Migration {
 }
 
 /// رجیستری مهاجرت‌ها — فقط افزودنی.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "physical_schema_v1",
-    sql: SCHEMA_V1,
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "physical_schema_v1",
+        sql: SCHEMA_V1,
+    },
+    // ایندکس یکتا روی هش blake3 پیوست — تضمین یکتایی در سطح پایگاه‌داده
+    // (سطح برنامه در attachments.rs تکرار را بازمی‌گرداند؛ ایندکس گارد
+    // شرایط مسابقه است).
+    Migration {
+        version: 2,
+        name: "unique_attachment_hash_index",
+        sql: "DROP INDEX IF EXISTS idx_attachments_hash;\n\
+              CREATE UNIQUE INDEX IF NOT EXISTS idx_attachments_hash_unique\n\
+              ON attachments(blake3_hash);",
+    },
+];
 
 /// نسخه فعلی پایگاه‌داده.
 pub fn schema_version(conn: &Connection) -> Result<i64, StorageError> {
@@ -82,8 +94,30 @@ mod tests {
         let db = Database::open_memory(None).unwrap();
         let mut conn = db.lock();
         let applied = run_migrations(&mut conn, |_| Ok(())).unwrap();
-        assert_eq!(applied, vec![1]);
+        assert_eq!(applied, vec![1, 2]);
         assert!(is_schema_current(&conn).unwrap());
+    }
+
+    #[test]
+    fn unique_attachment_hash_index_enforced() {
+        let db = Database::open_memory(None).unwrap();
+        let mut conn = db.lock();
+        run_migrations(&mut conn, |_| Ok(())).unwrap();
+        conn.execute(
+            "INSERT INTO attachments (id, file_name, file_path, thumbnail_path, mime_type,
+             size_bytes, blake3_hash, width, height, created_at)
+             VALUES ('a1','f.jpg','p',NULL,NULL,10,'abc',NULL,NULL,'2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        // درج هش تکراری باید در سطح پایگاه‌داده رد شود
+        let dup = conn.execute(
+            "INSERT INTO attachments (id, file_name, file_path, thumbnail_path, mime_type,
+             size_bytes, blake3_hash, width, height, created_at)
+             VALUES ('a2','f2.jpg','p2',NULL,NULL,10,'abc',NULL,NULL,'2026-01-01T00:00:00Z')",
+            [],
+        );
+        assert!(dup.is_err(), "duplicate blake3_hash must violate unique index");
     }
 
     #[test]
@@ -108,8 +142,8 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        // مهاجرت ۱ نیازی به بکاپ ندارد
-        assert!(backups.is_empty());
+        // مهاجرت ۱ نیازی به بکاپ ندارد؛ مهاجرت ۲ (> ۱) پرخطر محسوب می‌شود
+        assert_eq!(backups, vec![2]);
     }
 
     #[test]

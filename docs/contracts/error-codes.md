@@ -56,6 +56,7 @@
 | 1208 | `kdf_failed` | `error.security.kdf_failed` | شکست Argon2id یا قالب هش |
 | 1209 | `audit_error` | `error.security.audit_error` | خطای ثبت/خواندن حسابرسی |
 | 1210 | `malformed_vault_record` | `error.security.malformed_vault_record` | رکورد گاوصندوق خراب/نسخه ناشناخته |
+| 1211 | `rate_limited` | `error.security.rate_limited` | محدودسازی تلاش ورود — ۵ تلاش ناموفق در پنجره ۱۵ دقیقه‌ای (از `audit_logs`) |
 
 ### موتور فیلدهای سفارشی (1300–1399)
 

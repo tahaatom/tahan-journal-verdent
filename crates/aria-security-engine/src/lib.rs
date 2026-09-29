@@ -18,11 +18,13 @@ pub mod audit;
 pub mod crypto;
 pub mod error;
 pub mod kdf;
+pub mod providers;
 pub mod vault;
 
 pub use crypto::{decrypt, encrypt};
 pub use error::SecurityError;
 pub use kdf::{derive_key_argon2id, hash_password, validate_password, verify_password};
+pub use providers::{VaultCryptoBridge, VaultKeyBridge};
 pub use vault::{ProfileVault, VaultRecord, AUTO_LOCK_DEFAULT_SECS};
 
 #[cfg(test)]

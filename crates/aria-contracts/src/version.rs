@@ -15,7 +15,8 @@ pub const KERNEL_CONTRACT_VERSION: &str = "1.0.0";
 pub const PLUGIN_API_VERSION: &str = "1.0.0";
 
 /// نسخه اسکیمای فیزیکی پایگاه‌داده.
-pub const DATABASE_SCHEMA_VERSION: u32 = 1;
+/// نسخه ۲: ایندکس یکتا روی `attachments.blake3_hash` (مهاجرت ۲).
+pub const DATABASE_SCHEMA_VERSION: u32 = 2;
 
 /// نسخه فرمت بکاپ.
 pub const BACKUP_FORMAT_VERSION: u32 = 1;
@@ -47,8 +48,8 @@ mod tests {
     }
 
     #[test]
-    fn schema_and_backup_versions_start_at_one() {
-        assert_eq!(DATABASE_SCHEMA_VERSION, 1);
+    fn schema_version_matches_migration_registry() {
+        assert_eq!(DATABASE_SCHEMA_VERSION, 2);
         assert_eq!(BACKUP_FORMAT_VERSION, 1);
     }
 

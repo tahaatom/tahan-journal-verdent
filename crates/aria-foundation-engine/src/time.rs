@@ -140,17 +140,28 @@ pub fn jalali_to_gregorian(jy: i32, jm: u32, jd: u32) -> Result<(i32, u32, u32),
     Ok(jalali_to_gregorian_raw(jy, jm, jd))
 }
 
-/// تعداد روزهای ماه جلالی.
-pub fn jalali_month_days(jy: i32, jm: u32) -> u32 {
+/// تعداد روزهای ماه جلالی — خطا به‌جای panic برای ماه/سال نامعتبر.
+pub fn jalali_month_days(jy: i32, jm: u32) -> Result<u32, FoundationError> {
     const J_DAYS: [u32; 12] = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
-    if jm == 12 {
-        // طول اسفند = فاصله روز اول اسفند تا نوروز سال بعد
-        let d1 = jalali_date_to_naive(jy, 12, 1).expect("jalali year in supported range");
-        let d2 = jalali_date_to_naive(jy + 1, 1, 1).expect("jalali year in supported range");
-        (d2 - d1).num_days() as u32
-    } else {
-        J_DAYS[(jm - 1) as usize]
+    if !(1..=12).contains(&jm) {
+        return Err(FoundationError::invalid_datetime(format!(
+            "jalali month out of range: {jm}"
+        )));
     }
+    // سال خارج از بازه پشتیبانی‌شده همیشه خطاست — حتی برای ماه‌های با طول ثابت
+    if !(1178..=1633).contains(&jy) {
+        return Err(FoundationError::invalid_datetime(format!(
+            "jalali year out of supported range: {jy}"
+        )));
+    }
+    if jm != 12 {
+        return Ok(J_DAYS[(jm - 1) as usize]);
+    }
+    // طول اسفند = فاصله روز اول اسفند تا نوروز سال بعد
+    // (سال ۱۶۳۳ به نوروز ۱۶۳۴ نیاز دارد که بیرون بازه است → خطا، نه panic)
+    let d1 = jalali_date_to_naive(jy, 12, 1)?;
+    let d2 = jalali_date_to_naive(jy + 1, 1, 1)?;
+    Ok((d2 - d1).num_days() as u32)
 }
 
 /// تاریخ جلالی قالب‌بندی‌شده (مثل «۱۴۰۵/۰۷/۰۵»).
@@ -239,7 +250,11 @@ mod tests {
         let mut y = sy;
         let mut m = sm;
         loop {
-            let days = if m == 12 { jalali_month_days(y, 12) } else { [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30][m as usize - 1] };
+            let days = if m == 12 {
+                jalali_month_days(y, 12).expect("roundtrip year in range")
+            } else {
+                [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30][m as usize - 1]
+            };
             for d in 1..=days {
                 let g = jalali_to_gregorian(y, m, d).expect("valid date");
                 assert_eq!(gregorian_to_jalali(g.0, g.1, g.2), (y, m, d), "roundtrip failed for {y}/{m}/{d}");
@@ -263,6 +278,21 @@ mod tests {
         assert!(jalali_to_gregorian(1405, 1, 0).is_err());
         assert!(jalali_to_gregorian(1403, 12, 31).is_err()); // اسفند حداکثر ۳۰ روز دارد
         assert!(jalali_to_gregorian(100, 1, 1).is_err()); // خارج بازه
+    }
+
+    #[test]
+    fn month_days_out_of_range_errors_not_panics() {
+        // ماه نامعتبر
+        assert!(jalali_month_days(1405, 13).is_err());
+        assert!(jalali_month_days(1405, 0).is_err());
+        // سال مرزی بالای بازه — اسفند ۱۶۳۳ به نوروز ۱۶۳۴ نیاز دارد که بیرون بازه است
+        assert!(jalali_month_days(1633, 12).is_err());
+        // سال پایین بازه
+        assert!(jalali_month_days(1177, 1).is_err());
+        // مقادیر معتبر
+        assert_eq!(jalali_month_days(1405, 7).unwrap(), 30);
+        assert_eq!(jalali_month_days(1403, 12).unwrap(), 30); // کبیسه
+        assert_eq!(jalali_month_days(1404, 12).unwrap(), 29); // غیرکبیسه
     }
 
     #[test]
