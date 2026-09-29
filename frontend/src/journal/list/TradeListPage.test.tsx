@@ -114,6 +114,21 @@ function makeDetails(): TradeDetails {
         mime_type: "image/png",
         size_bytes: 2048,
         link_kind: "chart",
+        blake3_hash: "abcd1234ef567890abcd1234ef567890",
+        width: 800,
+        height: 600,
+        has_thumbnail: true,
+      },
+      {
+        id: "att-2",
+        file_name: "notes.txt",
+        mime_type: "text/plain",
+        size_bytes: 96,
+        link_kind: "news",
+        blake3_hash: "11112222333344445555666677778888",
+        width: null,
+        height: null,
+        has_thumbnail: false,
       },
     ],
     custom_values: { confidence: 8 },
@@ -141,11 +156,25 @@ function makeBridge(
   );
   const details = vi.fn<TradeListBridge["details"]>(async () => makeDetails());
   const executeCommand = vi.fn<TradeListBridge["executeCommand"]>(async () => []);
+  const attachmentData = vi.fn<TradeListBridge["attachmentData"]>(async (id) => ({
+    attachment_id: id,
+    file_name: "chart.png",
+    mime_type: "image/png",
+    size_bytes: 2048,
+    blake3_hash: "abcd1234ef567890abcd1234ef567890",
+    width: 800,
+    height: 600,
+    integrity_ok: true,
+    is_thumbnail: true,
+    content_mime: "image/png",
+    data_base64: btoa("png-bytes"),
+  }));
   return {
     query,
     details,
     executeCommand,
     ingestAttachment: vi.fn(async () => undefined),
+    attachmentData,
     listAccounts: vi.fn(async () => [{ id: "acc-1", name: "حساب پیش‌فرض", currency: "USD" }]),
     listSymbols: vi.fn(async () => [{ id: "sym-1", name: "XAU/USD" }]),
     listFields: vi.fn(async () => []),
@@ -391,5 +420,110 @@ describe("TradeListPage — details panel", () => {
         { override_id: "ov-1" },
       );
     });
+  });
+});
+
+describe("TradeListPage — attachments (فاز ۱.۱۳)", () => {
+  it("loads thumbnails with integrity badge and shows metadata for images and placeholders for other files", async () => {
+    const bridge = makeBridge();
+    await setup(bridge);
+    await screen.findByTestId("trade-row-t-1");
+    await userEvent.setup().click(screen.getByTestId("open-trade-t-1"));
+    await screen.findByTestId("trade-details-panel");
+
+    // بندانگشتی تصویر با data URL و نشان صحت
+    const thumb = await screen.findByTestId("attachment-thumb-chart.png");
+    expect(thumb.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
+    expect(bridge.attachmentData).toHaveBeenCalledWith("att-1", true);
+    expect(await screen.findByTestId("integrity-chart.png")).toHaveTextContent("✓");
+
+    // فایل غیرتصویری: جای‌نگهدار بدون فراخوانی بایت‌ها
+    expect(screen.getByTestId("attachment-placeholder-notes.txt")).toBeInTheDocument();
+    expect(bridge.attachmentData).not.toHaveBeenCalledWith("att-2", true);
+
+    // فراداده: ابعاد و پیشوند هش
+    const meta = screen.getByTestId("meta-chart.png");
+    expect(meta).toHaveTextContent("800×600");
+    expect(meta).toHaveTextContent("abcd1234…");
+    expect(meta).toHaveTextContent("نمودار");
+  });
+
+  it("opens zoom viewer with full data, metadata and integrity, then closes", async () => {
+    const user = userEvent.setup();
+    const bridge = makeBridge();
+    await setup(bridge);
+    await user.click(screen.getByTestId("open-trade-t-1"));
+    await screen.findByTestId("trade-details-panel");
+    await user.click(screen.getByTestId("open-zoom-chart.png"));
+
+    // خواندن بایت‌های اصلی (نه بندانگشتی)
+    await screen.findByTestId("zoom-viewer");
+    expect(bridge.attachmentData).toHaveBeenCalledWith("att-1", false);
+    expect(screen.getByTestId("zoom-image")).toBeInTheDocument();
+    expect(screen.getByTestId("zoom-integrity")).toHaveTextContent("سالم");
+    expect(screen.getByTestId("zoom-meta")).toHaveTextContent("image/png");
+    expect(screen.getByTestId("zoom-meta")).toHaveTextContent("800×600");
+
+    await user.click(screen.getByTestId("zoom-close"));
+    expect(screen.queryByTestId("zoom-viewer")).not.toBeInTheDocument();
+  });
+
+  it("shows integrity failure in zoom when file is tampered", async () => {
+    const user = userEvent.setup();
+    const bridge = makeBridge({
+      attachmentData: vi.fn<TradeListBridge["attachmentData"]>(async (id) => ({
+        attachment_id: id,
+        file_name: "chart.png",
+        mime_type: "image/png",
+        size_bytes: 2048,
+        blake3_hash: "abcd1234ef567890abcd1234ef567890",
+        width: 800,
+        height: 600,
+        integrity_ok: false,
+        is_thumbnail: false,
+        content_mime: "image/png",
+        data_base64: btoa("tampered"),
+      })),
+    });
+    await setup(bridge);
+    await user.click(screen.getByTestId("open-trade-t-1"));
+    await screen.findByTestId("trade-details-panel");
+    await user.click(screen.getByTestId("open-zoom-chart.png"));
+    expect(await screen.findByTestId("zoom-integrity")).toHaveTextContent("خراب یا تغییر کرده");
+  });
+
+  it("unlinks an attachment through domain command and keeps metadata", async () => {
+    const user = userEvent.setup();
+    const bridge = makeBridge();
+    await setup(bridge);
+    await user.click(screen.getByTestId("open-trade-t-1"));
+    await screen.findByTestId("trade-details-panel");
+    await user.click(screen.getByTestId("unlink-attachment-chart.png"));
+    await waitFor(() => {
+      expect(bridge.executeCommand).toHaveBeenCalledWith(
+        "domain.unlink_attachment_from_trade",
+        { attachment_id: "att-1", trade_id: "t-1" },
+      );
+    });
+    expect(await screen.findByTestId("details-flash")).toHaveTextContent("پیوند پیوست حذف شد");
+  });
+
+  it("rejects oversize and disallowed files client-side without calling ingest", async () => {
+    const user = userEvent.setup();
+    const bridge = makeBridge();
+    await setup(bridge);
+    await user.click(screen.getByTestId("open-trade-t-1"));
+    await screen.findByTestId("trade-details-panel");
+
+    const input = screen.getByTestId("attachment-input") as HTMLInputElement;
+    const big = new File([new ArrayBuffer(21 * 1024 * 1024)], "big.png", { type: "image/png" });
+    await user.upload(input, big);
+    expect(await screen.findByRole("alert")).toHaveTextContent("مگابایت");
+    expect(bridge.ingestAttachment).not.toHaveBeenCalled();
+
+    const bad = new File([new ArrayBuffer(10)], "evil.exe", { type: "application/x-msdownload" });
+    await user.upload(input, bad);
+    expect(await screen.findByRole("alert")).toHaveTextContent("مجاز نیست");
+    expect(bridge.ingestAttachment).not.toHaveBeenCalled();
   });
 });

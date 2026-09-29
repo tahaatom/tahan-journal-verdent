@@ -205,6 +205,41 @@ export function attachmentIngest(args: {
   });
 }
 
+/** حداکثر حجم پیوست — هم‌تراز سمت کرنل (۲۰ مگابایت). */
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+/** پسوندهای مجاز پیوست — هم‌تراز سمت کرنل (فاز ۱.۱۳). */
+export const ALLOWED_ATTACHMENT_EXTENSIONS = [
+  "png", "jpg", "jpeg", "gif", "webp", "bmp",
+  "pdf", "txt", "csv", "json",
+] as const;
+
+/**
+ * خواندن بایت‌های پیوست برای پیش‌نمایش — base64 + فراداده + نتیجه
+ * تأیید صحت blake3 روی خواندن (فاز ۱.۱۳).
+ */
+export interface AttachmentData {
+  attachment_id: string;
+  file_name: string;
+  mime_type: string | null;
+  size_bytes: number;
+  blake3_hash: string;
+  width: number | null;
+  height: number | null;
+  /** آیا فایل اصلی روی دیسک با هش ثبت‌شده می‌خواند؟ */
+  integrity_ok: boolean;
+  is_thumbnail: boolean;
+  content_mime: string;
+  data_base64: string;
+}
+
+export function attachmentData(attachmentId: string, thumbnail: boolean): Promise<AttachmentData> {
+  return invoke<AttachmentData>("attachment_data", {
+    attachmentId,
+    thumbnail,
+  });
+}
+
 // ===================== فاز ۱.۱۲ — فهرست و جزئیات =====================
 
 /** سطر خلاصه فهرست معاملات — مطابق `TradeListRow` سمت کرنل. */
@@ -318,6 +353,12 @@ export interface TradeAttachmentInfo {
   mime_type: string | null;
   size_bytes: number;
   link_kind: string;
+  /** هش blake3 — برای نمایش کوتاه و حسابرسی (فاز ۱.۱۳) */
+  blake3_hash: string;
+  width: number | null;
+  height: number | null;
+  /** آیا بندانگشتی تولید شده است؟ (تصاویر) */
+  has_thumbnail: boolean;
 }
 
 /** معامله کامل — canonical. */

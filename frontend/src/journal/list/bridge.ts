@@ -1,6 +1,6 @@
 //! پل فهرست/جزئیات — جداسازی فرم از IPC برای آزمون‌پذیری.
 
-import type { DomainEvent, PagedTrades, TradeDetails } from "../../kernel";
+import type { AttachmentData, DomainEvent, PagedTrades, TradeDetails } from "../../kernel";
 import type { SortKey } from "../../kernel";
 
 /** پل موردنیاز فهرست معاملات و پنل جزئیات. */
@@ -24,6 +24,8 @@ export interface TradeListBridge {
     data: Uint8Array;
     linkKind: string;
   }): Promise<void>;
+  /** بایت‌های پیوست برای پیش‌نمایش/بزرگ‌نمایی (فاز ۱.۱۳). */
+  attachmentData(attachmentId: string, thumbnail: boolean): Promise<AttachmentData>;
   listAccounts(): Promise<{ id: string; name: string; currency: string }[]>;
   listSymbols(): Promise<{ id: string; name: string }[]>;
   listFields(): Promise<

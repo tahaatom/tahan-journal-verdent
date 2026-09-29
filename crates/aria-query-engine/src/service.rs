@@ -1451,7 +1451,7 @@ mod tests {
     }
 
     fn trade_with_note(db: &Database, note: &str, tags: Option<&str>) -> String {
-        let mut conn = db.lock();
+        let conn = db.lock();
         conn.execute(
             "INSERT OR IGNORE INTO trading_accounts (id, profile_id, name, created_at, updated_at)
              VALUES ('a', 'p1', 'حساب', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
@@ -1513,7 +1513,7 @@ mod tests {
         let a = trade_with_note(&db, "pnl 100", None);
         let b = trade_with_note(&db, "pnl -5", None);
         {
-            let mut conn = db.lock();
+            let conn = db.lock();
             conn.execute(
                 "UPDATE journal_trades SET realized_pnl = 100 WHERE id = ?1",
                 rusqlite::params![a],

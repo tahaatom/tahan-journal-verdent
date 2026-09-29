@@ -22,6 +22,10 @@ aria-query-engine = { path = "../../crates/aria-query-engine" }
 aria-ui-engine = { path = "../../crates/aria-ui-engine" }
 rusqlite = { workspace = true }
 uuid = { workspace = true }
+base64 = "0.22"
+
+[dev-dependencies]
+image = { workspace = true }
 
 [features]
 default = []

@@ -16,6 +16,7 @@ blake3 = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+image = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

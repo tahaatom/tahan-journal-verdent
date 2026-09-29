@@ -19,6 +19,7 @@ pub mod event_type {
     pub const EXECUTION_ASSIGNED: &str = "domain.execution_assigned";
     pub const OVERRIDE_ADDED: &str = "domain.override_added";
     pub const OVERRIDE_REVERTED: &str = "domain.override_reverted";
+    pub const ATTACHMENT_UNLINKED: &str = "domain.attachment_unlinked";
     pub const STATS_INVALIDATED: &str = "domain.stats_invalidated";
 }
 
@@ -95,6 +96,14 @@ impl DomainEventFactory {
 
     pub fn override_reverted(&self, override_id: &str) -> EventEnvelope {
         self.envelope(event_type::OVERRIDE_REVERTED, serde_json::json!({ "override_id": override_id }))
+    }
+
+    /// رویداد حذف پیوند پیوست از معامله (فاز ۱.۱۳).
+    pub fn attachment_unlinked(&self, attachment_id: &str, trade_id: &str) -> EventEnvelope {
+        self.envelope(
+            event_type::ATTACHMENT_UNLINKED,
+            serde_json::json!({ "attachment_id": attachment_id, "trade_id": trade_id }),
+        )
     }
 
     /// رویداد ابطال آمار — مصرف‌کننده اجباری: موتور پرس‌وجو.

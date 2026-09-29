@@ -233,9 +233,15 @@ struct AttachmentDto {
     file_name: String,
     size_bytes: i64,
     blake3_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thumbnail_path: Option<String>,
 }
 
-/// پیوست یک معامله در پنل جزئیات — با نوع پیوند.
+/// پیوست یک معامله در پنل جزئیات — با نوع پیوند و فراداده پیش‌نمایش.
 #[derive(Serialize, Clone, Debug)]
 struct TradeAttachmentDto {
     id: String,
@@ -243,6 +249,29 @@ struct TradeAttachmentDto {
     mime_type: Option<String>,
     size_bytes: i64,
     link_kind: String,
+    blake3_hash: String,
+    width: Option<i64>,
+    height: Option<i64>,
+    has_thumbnail: bool,
+}
+
+/// داده پیوست برای پیش‌نمایش — base64 + فراداده + نتیجه تأیید صحت (فاز ۱.۱۳).
+#[derive(Serialize, Clone, Debug)]
+struct AttachmentDataDto {
+    attachment_id: String,
+    file_name: String,
+    mime_type: Option<String>,
+    size_bytes: i64,
+    blake3_hash: String,
+    width: Option<i64>,
+    height: Option<i64>,
+    /// آیا بایت‌های خواسته‌شده (اصلی یا بندانگشتی) با هش ثبت‌شده می‌خوانند؟
+    integrity_ok: bool,
+    /// true اگر بایت‌ها بندانگشتی است
+    is_thumbnail: bool,
+    /// mime پیشنهادی برای رندر (بندانگشتی همیشه image/png است)
+    content_mime: String,
+    data_base64: String,
 }
 
 /// جزئیات کامل یک معامله — canonical + موثر + پاها + اجراها +
@@ -403,7 +432,7 @@ mod journal_impl {
         let svc = DomainService::new(db);
         let trade = svc
             .get_trade(trade_id)
-            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?
             .ok_or_else(|| {
                 CmdError::new(
                     1401,
@@ -412,25 +441,26 @@ mod journal_impl {
             })?;
         let effective = svc
             .effective_entity("journal_trade", trade_id)
-            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?
             .unwrap_or(serde_json::Value::Null);
         let entry_legs = svc
             .entry_legs(trade_id)
-            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
         let exit_legs = svc
             .exit_legs(trade_id)
-            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
         let executions = svc
             .executions(trade_id)
-            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
         let overrides = svc
             .overrides_of("journal_trade", trade_id, true)
-            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
         let attachments = {
             let conn = db.lock();
             let mut stmt = conn
                 .prepare(
-                    "SELECT a.id, a.file_name, a.mime_type, a.size_bytes, l.link_kind
+                    "SELECT a.id, a.file_name, a.mime_type, a.size_bytes, l.link_kind,
+                            a.blake3_hash, a.width, a.height, (a.thumbnail_path IS NOT NULL)
                      FROM attachment_trade_links l
                      JOIN attachments a ON a.id = l.attachment_id
                      WHERE l.trade_id = ?1
@@ -445,6 +475,10 @@ mod journal_impl {
                         mime_type: r.get(2)?,
                         size_bytes: r.get(3)?,
                         link_kind: r.get(4)?,
+                        blake3_hash: r.get(5)?,
+                        width: r.get(6)?,
+                        height: r.get(7)?,
+                        has_thumbnail: r.get::<_, i64>(8)? != 0,
                     })
                 })
                 .map_err(|e| CmdError::new(0, format!("خطای خواندن پیوست‌ها: {e}")))?;
@@ -474,6 +508,43 @@ mod journal_impl {
     /// پیوند با معامله از مسیر دستور دامنه (حسابرسی و رویداد).
     /// همان فایل (هش یکسان) در پیوست‌های متعدد یکتاست — ردیف موجود
     /// استفاده مجدد می‌شود و فقط پیوند تازه ساخته می‌شود.
+    /// سقف حجم پیوست — ۲۰ مگابایت (فاز ۱.۱۳).
+    pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
+
+    /// پسوندهای مجاز — تصاویر و فایل‌های رایج ژورنال (فاز ۱.۱۳).
+    pub const ALLOWED_EXTENSIONS: &[&str] = &[
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", // تصاویر
+        "pdf", "txt", "csv", "json", // فایل‌ها
+    ];
+
+    /// اعتبارسنجی حجم و نوع پیوست پیش از ذخیره (فاز ۱.۱۳).
+    pub fn validate_attachment(
+        file_name: &str,
+        data_len: usize,
+    ) -> PlugResult<()> {
+        if data_len == 0 {
+            return Err(CmdError::new(0, "محتوای پیوست خالی است"));
+        }
+        if data_len > MAX_ATTACHMENT_BYTES {
+            return Err(CmdError::new(
+                0,
+                format!("حجم پیوست بیش از سقف {} مگابایت است", MAX_ATTACHMENT_BYTES / (1024 * 1024)),
+            ));
+        }
+        let ext = std::path::Path::new(file_name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        if !ALLOWED_EXTENSIONS.contains(&ext.as_str()) {
+            return Err(CmdError::new(
+                0,
+                format!("نوع فایل «{ext}» مجاز نیست؛ پسوندهای مجاز: {}", ALLOWED_EXTENSIONS.join(", ")),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn ingest_attachment(
         db: &Database,
         data_dir: &std::path::Path,
@@ -483,9 +554,7 @@ mod journal_impl {
         data: Vec<u8>,
         link_kind: &str,
     ) -> PlugResult<AttachmentDto> {
-        if data.is_empty() {
-            return Err(CmdError::new(0, "محتوای پیوست خالی است"));
-        }
+        validate_attachment(file_name, data.len())?;
         // پاک‌سازی نام فایل — فقط نام پایه، بدون مسیر
         let safe_name = std::path::Path::new(file_name)
             .file_name()
@@ -500,25 +569,35 @@ mod journal_impl {
             .map_err(|e| CmdError::new(0, format!("خطای نوشتن پیوست: {e}")))?;
         let hash = attachments::file_blake3_hash(&path)
             .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
-        let meta = match attachments::find_by_hash(db, &hash)
+        let (meta, is_new) = match attachments::find_by_hash(db, &hash)
             .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?
         {
             Some(existing) => {
                 // فایل تکراری: ردیف موجود استفاده مجدد می‌شود؛ نسخه فیزیکی
                 // تازه‌نوشته‌شده حذف و مسیر ردیف موجود حفظ می‌گردد.
                 let _ = std::fs::remove_file(&path);
-                existing
+                (existing, false)
             }
-            None => attachments::register_attachment(
-                db,
-                &safe_name,
-                &path,
-                mime_type.as_deref(),
-                None,
-                None,
-            )
-            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?,
+            None => (
+                attachments::register_attachment(
+                    db,
+                    &safe_name,
+                    &path,
+                    mime_type.as_deref(),
+                    None,
+                    None,
+                )
+                .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?,
+                true,
+            ),
         };
+        // بندانگشتی برای تصاویر جدید — شکست پیش‌نمایش ثبت پیوست را متوقف نمی‌کند
+        if is_new {
+            if let Ok(Some(info)) = attachments::generate_thumbnail(&path, &dir.join("thumbs"), &format!("{}_{}", meta.id, safe_name.rsplit_once('.').map_or(safe_name.as_str(), |(s, _)| s))) {
+                attachments::update_visuals(db, &meta.id, Some(&info.thumbnail_path), Some(info.width), Some(info.height))
+                    .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+            }
+        }
         execute_domain(
             db,
             aria_domain_engine::commands::command_type::LINK_ATTACHMENT_TO_TRADE,
@@ -528,11 +607,77 @@ mod journal_impl {
                 "link_kind": link_kind,
             }),
         )?;
+        let fresh = attachments::get_attachment(db, &meta.id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
         Ok(AttachmentDto {
-            id: meta.id,
+            id: fresh.id,
+            file_name: fresh.file_name,
+            size_bytes: fresh.size_bytes,
+            blake3_hash: fresh.blake3_hash,
+            width: fresh.width,
+            height: fresh.height,
+            thumbnail_path: fresh.thumbnail_path,
+        })
+    }
+
+    /// خواندن بایت‌های پیوست برای پیش‌نمایش — با دفاع مسیر و تأیید صحت
+    /// روی خواندن (مقایسه هش blake3 فایل اصلی با هش ثبت‌شده) — فاز ۱.۱۳.
+    pub fn attachment_data(
+        db: &Database,
+        data_dir: &std::path::Path,
+        attachment_id: &str,
+        want_thumbnail: bool,
+    ) -> PlugResult<AttachmentDataDto> {
+        let meta = attachments::get_attachment(db, attachment_id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+
+        // تأیید صحت فایل اصلی روی هر خواندن — فایل خراب/جابجاشده گزارش می‌شود
+        let integrity_ok = attachments::verify_integrity(db, attachment_id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+
+        let (rel, is_thumbnail) = match (want_thumbnail, &meta.thumbnail_path) {
+            (true, Some(tp)) if std::path::Path::new(tp).exists() => (tp.clone(), true),
+            _ => (meta.file_path.clone(), false),
+        };
+
+        // دفاع از مسیر: بایت‌ها فقط از پوشه پیوست‌های برنامه خوانده می‌شوند
+        let att_dir = data_dir.join("attachments");
+        let target = std::path::PathBuf::from(&rel);
+        let canon_target = target
+            .canonicalize()
+            .map_err(|_| CmdError::new(0, "فایل پیوست روی دیسک یافت نشد"))?;
+        let canon_dir = att_dir
+            .canonicalize()
+            .unwrap_or_else(|_| att_dir.clone());
+        if !canon_target.starts_with(&canon_dir) {
+            return Err(CmdError::new(0, "مسیر پیوست خارج از پوشه مجاز است"));
+        }
+
+        let bytes = std::fs::read(&canon_target)
+            .map_err(|e| CmdError::new(0, format!("خطای خواندن پیوست: {e}")))?;
+        use base64::Engine as _;
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+        let content_mime = if is_thumbnail {
+            "image/png".to_string()
+        } else {
+            meta.mime_type
+                .clone()
+                .unwrap_or_else(|| "application/octet-stream".to_string())
+        };
+
+        Ok(AttachmentDataDto {
+            attachment_id: meta.id,
             file_name: meta.file_name,
+            mime_type: meta.mime_type,
             size_bytes: meta.size_bytes,
             blake3_hash: meta.blake3_hash,
+            width: meta.width,
+            height: meta.height,
+            integrity_ok,
+            is_thumbnail,
+            content_mime,
+            data_base64,
         })
     }
 }
@@ -625,6 +770,23 @@ fn attachment_ingest(
     journal_impl::ingest_attachment(db, &dir, &trade_id, &file_name, mime_type, data, &link_kind)
 }
 
+/// خواندن بایت‌های پیوست (اصلی یا بندانگشتی) برای پیش‌نمایش — فاز ۱.۱۳.
+#[tauri::command]
+fn attachment_data(
+    app: AppHandle,
+    state: State<'_, Mutex<KernelState>>,
+    attachment_id: String,
+    thumbnail: bool,
+) -> Result<AttachmentDataDto, CmdError> {
+    let st = state.lock().unwrap();
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CmdError::new(0, format!("خطای مسیر داده: {e}")))?;
+    journal_impl::attachment_data(db, &dir, &attachment_id, thumbnail)
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Mutex::new(KernelState::default()))
@@ -644,7 +806,8 @@ fn main() {
             schema_set_values,
             accounts_list,
             symbols_list,
-            attachment_ingest
+            attachment_ingest,
+            attachment_data
         ])
         .setup(|app| {
             // در محیط توسعه مسیر داده تضمین می‌شود (برای فازهای بکاپ/تنظیمات)
@@ -905,5 +1068,156 @@ mod tests {
         let unassigned_count = d.executions.iter().filter(|e| e.assignment_status == "needs_assignment").count();
         // در این سناریو هیچ اجرای بی‌صاحب نداریم؛ پنل باید بتواند صفر را هم نمایش دهد
         assert_eq!(unassigned_count, 0);
+    }
+
+    // ==================== فاز ۱.۱۳ — پیوست‌ها ====================
+
+    #[test]
+    fn validate_attachment_rejects_oversize_and_bad_type() {
+        // حجم بیش از سقف
+        let err = journal_impl::validate_attachment("big.png", journal_impl::MAX_ATTACHMENT_BYTES + 1).unwrap_err();
+        assert!(err.message.contains("سقف"));
+        // نوع مجاز نیست
+        let err2 = journal_impl::validate_attachment("virus.exe", 100).unwrap_err();
+        assert!(err2.message.contains("مجاز نیست"));
+        // بدون پسوند
+        let err3 = journal_impl::validate_attachment("noext", 100).unwrap_err();
+        assert!(err3.message.contains("مجاز نیست"));
+        // پسوند با حروف بزرگ — مجاز
+        journal_impl::validate_attachment("REPORT.PDF", 100).unwrap();
+        journal_impl::validate_attachment("shot.JpG", 100).unwrap();
+        // خالی
+        let err4 = journal_impl::validate_attachment("a.png", 0).unwrap_err();
+        assert!(err4.message.contains("خالی"));
+    }
+
+    fn test_png_bytes() -> Vec<u8> {
+        let mut buf = Vec::new();
+        image::RgbaImage::from_pixel(800, 600, image::Rgba([30, 200, 90, 255]))
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .unwrap();
+        buf
+    }
+
+    #[test]
+    fn ingest_attachment_generates_thumbnail_and_dimensions() {
+        let db = seeded();
+        let t1 = create_trade(&db);
+        let dir = std::env::temp_dir().join(format!("tahan-test-{}", uuid::Uuid::new_v4()));
+        let a = journal_impl::ingest_attachment(
+            &db, &dir, &t1, "shot.png", Some("image/png".into()), test_png_bytes(), "chart",
+        )
+        .unwrap();
+        assert_eq!(a.width, Some(800));
+        assert_eq!(a.height, Some(600));
+        let thumb = a.thumbnail_path.expect("png ingest must create thumbnail");
+        assert!(std::path::Path::new(&thumb).exists());
+        // بندانگشتی داخل پوشه thumbs پوشه پیوست‌هاست
+        assert!(std::path::Path::new(&thumb).starts_with(dir.join("attachments").join("thumbs")));
+
+        // خواندن بندانگشتی: PNG کوچک با base64
+        let d = journal_impl::attachment_data(&db, &dir, &a.id, true).unwrap();
+        assert!(d.is_thumbnail);
+        assert_eq!(d.content_mime, "image/png");
+        use base64::Engine as _;
+        let bytes = base64::engine::general_purpose::STANDARD.decode(&d.data_base64).unwrap();
+        let decoded = image::load_from_memory(&bytes).unwrap();
+        assert!(decoded.width().max(decoded.height()) <= aria_storage_engine::attachments::THUMBNAIL_MAX_EDGE);
+
+        // خواندن اصلی: فراداده کامل و صحت سالم
+        let full = journal_impl::attachment_data(&db, &dir, &a.id, false).unwrap();
+        assert!(!full.is_thumbnail);
+        assert!(full.integrity_ok);
+        assert_eq!(full.width, Some(800));
+        assert_eq!(full.size_bytes, a.size_bytes);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn attachment_data_detects_corrupted_file_on_read() {
+        let db = seeded();
+        let t1 = create_trade(&db);
+        let dir = std::env::temp_dir().join(format!("tahan-test-{}", uuid::Uuid::new_v4()));
+        let a = journal_impl::ingest_attachment(
+            &db, &dir, &t1, "note.txt", Some("text/plain".into()), b"original".to_vec(), "news",
+        )
+        .unwrap();
+        // خراب کردن فایل روی دیسک
+        for entry in std::fs::read_dir(dir.join("attachments")).unwrap() {
+            let p = entry.unwrap().path();
+            if p.is_file() {
+                std::fs::write(&p, b"tampered!").unwrap();
+            }
+        }
+        let d = journal_impl::attachment_data(&db, &dir, &a.id, false).unwrap();
+        assert!(!d.integrity_ok, "corrupted file must be detected by hash check");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn attachment_data_blocks_escape_from_attachments_dir() {
+        let db = seeded();
+        let t1 = create_trade(&db);
+        let dir = std::env::temp_dir().join(format!("tahan-test-{}", uuid::Uuid::new_v4()));
+        let a = journal_impl::ingest_attachment(
+            &db, &dir, &t1, "s.txt", Some("text/plain".into()), b"x".to_vec(), "other",
+        )
+        .unwrap();
+        // دستکاری مسیر ذخیره‌شده در پایگاه‌داده به فایل بیرون پوشه پیوست‌ها
+        let outside = std::env::temp_dir().join("tahan-outside-secret.txt");
+        std::fs::write(&outside, b"secret").unwrap();
+        {
+            let conn = db.lock();
+            conn.execute(
+                "UPDATE attachments SET file_path = ?2 WHERE id = ?1",
+                rusqlite::params![a.id, outside.display().to_string()],
+            )
+            .unwrap();
+        }
+        let err = journal_impl::attachment_data(&db, &dir, &a.id, false).unwrap_err();
+        assert!(err.message.contains("خارج از پوشه مجاز"));
+        let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unlink_attachment_end_to_end() {
+        let db = seeded();
+        let t1 = create_trade(&db);
+        let dir = std::env::temp_dir().join(format!("tahan-test-{}", uuid::Uuid::new_v4()));
+        let a = journal_impl::ingest_attachment(
+            &db, &dir, &t1, "chart.png", Some("image/png".into()), b"img2".to_vec(), "chart",
+        )
+        .unwrap();
+        assert_eq!(journal_impl::trade_details(&db, &t1).unwrap().attachments.len(), 1);
+
+        // حذف پیوند — فراداده و فایل باقی می‌مانند
+        let events = journal_impl::execute_domain(
+            &db,
+            command_type::UNLINK_ATTACHMENT_FROM_TRADE,
+            serde_json::json!({ "attachment_id": a.id, "trade_id": t1 }),
+        )
+        .unwrap();
+        assert!(events.iter().any(|e| e.event_type == "domain.attachment_unlinked"));
+        let d = journal_impl::trade_details(&db, &t1).unwrap();
+        assert!(d.attachments.is_empty());
+        // حذف پیوندی که دیگر وجود ندارد خطا می‌دهد
+        let err = journal_impl::execute_domain(
+            &db,
+            command_type::UNLINK_ATTACHMENT_FROM_TRADE,
+            serde_json::json!({ "attachment_id": a.id, "trade_id": t1 }),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, 1404);
+        // پیوست هنوز قابل خواندن است و می‌تواند دوباره پیوند بخورد
+        assert!(journal_impl::attachment_data(&db, &dir, &a.id, false).is_ok());
+        journal_impl::execute_domain(
+            &db,
+            command_type::LINK_ATTACHMENT_TO_TRADE,
+            serde_json::json!({ "attachment_id": a.id, "trade_id": t1, "link_kind": "after_trade" }),
+        )
+        .unwrap();
+        assert_eq!(journal_impl::trade_details(&db, &t1).unwrap().attachments[0].link_kind, "after_trade");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

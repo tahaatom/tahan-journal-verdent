@@ -167,6 +167,16 @@ impl<'a> DomainService<'a> {
                     factory.stats_invalidated(Some(&c.trade_id)),
                 ])
             }
+            command_type::UNLINK_ATTACHMENT_FROM_TRADE => {
+                let c: UnlinkAttachmentFromTradeCommand = serde_json::from_value(cmd.payload.clone())
+                    .map_err(|e| DomainError::invalid(format!("bad payload: {e}")))?;
+                self.unlink_attachment_from_trade(tx, &c)?;
+                Ok(vec![
+                    factory.attachment_unlinked(&c.attachment_id, &c.trade_id),
+                    factory.trade_updated(&c.trade_id),
+                    factory.stats_invalidated(Some(&c.trade_id)),
+                ])
+            }
             other => Err(DomainError::invalid(format!("unknown command_type: {other}"))),
         }
     }
@@ -606,6 +616,25 @@ impl<'a> DomainService<'a> {
              VALUES (?1,?2,?3,?4,?5)",
             params![Uuid::new_v4().to_string(), c.attachment_id, c.trade_id, c.link_kind, now_iso()],
         )?;
+        Ok(())
+    }
+
+    /// حذف پیوند پیوست از معامله — فقط پیوند حذف می‌شود، نه فایل/فراداده (فاز ۱.۱۳).
+    pub(crate) fn unlink_attachment_from_trade(&self, tx: &Transaction<'_>, c: &UnlinkAttachmentFromTradeCommand) -> Result<(), DomainError> {
+        if !self.exists(tx, "attachments", &c.attachment_id)? {
+            return Err(DomainError::attachment_not_found(&c.attachment_id));
+        }
+        self.require_live_trade(tx, &c.trade_id)?;
+        let n = tx.execute(
+            "DELETE FROM attachment_trade_links WHERE attachment_id = ?1 AND trade_id = ?2",
+            params![c.attachment_id, c.trade_id],
+        )?;
+        if n == 0 {
+            return Err(DomainError::invalid(format!(
+                "attachment {} is not linked to trade {}",
+                c.attachment_id, c.trade_id
+            )));
+        }
         Ok(())
     }
 
@@ -1960,6 +1989,107 @@ mod tests {
             }))
             .unwrap_err();
         assert_eq!(err2.code(), 1404);
+    }
+
+    fn insert_attachment(db: &Database, id: &str) {
+        let conn = db.lock();
+        conn.execute(
+            "INSERT INTO attachments (id, file_name, file_path, size_bytes, blake3_hash, created_at)
+             VALUES (?1,'chart.png','/x/chart.png',10,'hash','2026-09-28T10:00:00Z')",
+            params![id],
+        )
+        .unwrap();
+    }
+
+    fn link_count(db: &Database, trade_id: &str, attachment_id: &str) -> i64 {
+        let conn = db.lock();
+        conn.query_row(
+            "SELECT COUNT(*) FROM attachment_trade_links WHERE trade_id = ?1 AND attachment_id = ?2",
+            params![trade_id, attachment_id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn unlink_attachment_removes_link_only() {
+        let db = db();
+        let (a, s) = setup_account_symbol(&db);
+        let trade_id = create_trade(&db, &a, &s, None);
+        insert_attachment(&db, "f2");
+        svc(&db)
+            .execute(&env(command_type::LINK_ATTACHMENT_TO_TRADE, LinkAttachmentToTradeCommand {
+                attachment_id: "f2".into(),
+                trade_id: trade_id.clone(),
+                link_kind: "chart".into(),
+            }))
+            .unwrap();
+        assert_eq!(link_count(&db, &trade_id, "f2"), 1);
+
+        let events = svc(&db)
+            .execute(&env(command_type::UNLINK_ATTACHMENT_FROM_TRADE, UnlinkAttachmentFromTradeCommand {
+                attachment_id: "f2".into(),
+                trade_id: trade_id.clone(),
+            }))
+            .unwrap();
+        assert_eq!(link_count(&db, &trade_id, "f2"), 0);
+        // رویداد حذف پیوند منتشر می‌شود و فراداده پیوست دست‌نخورده می‌ماند
+        assert!(events.iter().any(|e| e.event_type == crate::events::event_type::ATTACHMENT_UNLINKED));
+        let conn = db.lock();
+        let meta: i64 = conn
+            .query_row("SELECT COUNT(*) FROM attachments WHERE id = 'f2'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(meta, 1, "unlink must keep attachment metadata");
+    }
+
+    #[test]
+    fn unlink_rejects_unknown_attachment_or_missing_link() {
+        let db = db();
+        let (a, s) = setup_account_symbol(&db);
+        let trade_id = create_trade(&db, &a, &s, None);
+        let service = svc(&db);
+
+        // پیوست ناشناخته
+        let err = service
+            .execute(&env(command_type::UNLINK_ATTACHMENT_FROM_TRADE, UnlinkAttachmentFromTradeCommand {
+                attachment_id: "ghost".into(),
+                trade_id: trade_id.clone(),
+            }))
+            .unwrap_err();
+        assert_eq!(err.code(), 1409);
+
+        // پیوست موجود اما بدون پیوند
+        insert_attachment(&db, "f3");
+        let err2 = service
+            .execute(&env(command_type::UNLINK_ATTACHMENT_FROM_TRADE, UnlinkAttachmentFromTradeCommand {
+                attachment_id: "f3".into(),
+                trade_id: trade_id.clone(),
+            }))
+            .unwrap_err();
+        assert_eq!(err2.code(), 1404);
+
+        // پس از پیوند و حذف پیوند، پیوند دوباره برقرار می‌شود (چرخه کامل)
+        svc(&db)
+            .execute(&env(command_type::LINK_ATTACHMENT_TO_TRADE, LinkAttachmentToTradeCommand {
+                attachment_id: "f3".into(),
+                trade_id: trade_id.clone(),
+                link_kind: "news".into(),
+            }))
+            .unwrap();
+        svc(&db)
+            .execute(&env(command_type::UNLINK_ATTACHMENT_FROM_TRADE, UnlinkAttachmentFromTradeCommand {
+                attachment_id: "f3".into(),
+                trade_id: trade_id.clone(),
+            }))
+            .unwrap();
+        svc(&db)
+            .execute(&env(command_type::LINK_ATTACHMENT_TO_TRADE, LinkAttachmentToTradeCommand {
+                attachment_id: "f3".into(),
+                trade_id: trade_id.clone(),
+                link_kind: "other".into(),
+            }))
+            .unwrap();
+        assert_eq!(link_count(&db, &trade_id, "f3"), 1);
     }
 
     // ==================== outbox ====================

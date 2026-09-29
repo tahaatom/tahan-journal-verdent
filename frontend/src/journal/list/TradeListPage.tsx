@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   accountsList,
+  attachmentData,
   attachmentIngest,
   domainExecute,
   schemaListFields,
@@ -31,6 +32,7 @@ function useKernelListBridge(): TradeListBridge {
       details: (tradeId) => tradeDetails(tradeId),
       executeCommand: (commandType, payload) => domainExecute(commandType, payload),
       ingestAttachment: (args) => attachmentIngest(args).then(() => undefined),
+      attachmentData: (attachmentId, thumbnail) => attachmentData(attachmentId, thumbnail),
       listAccounts: () =>
         accountsList().then((xs) =>
           xs.map((a) => ({ id: a.id, name: a.name, currency: a.currency })),

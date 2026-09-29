@@ -18,6 +18,7 @@ pub mod command_type {
     pub const ADD_MANUAL_OVERRIDE: &str = "domain.add_manual_override";
     pub const REVERT_MANUAL_OVERRIDE: &str = "domain.revert_manual_override";
     pub const LINK_ATTACHMENT_TO_TRADE: &str = "domain.link_attachment_to_trade";
+    pub const UNLINK_ATTACHMENT_FROM_TRADE: &str = "domain.unlink_attachment_from_trade";
 }
 
 /// CreateTradeCommand — ساخت معامله دستی.
@@ -168,6 +169,14 @@ pub struct LinkAttachmentToTradeCommand {
     pub trade_id: String,
     /// before_trade | after_trade | chart | news | other
     pub link_kind: String,
+}
+
+/// UnlinkAttachmentFromTradeCommand — حذف پیوند پیوست از معامله (فاز ۱.۱۳).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct UnlinkAttachmentFromTradeCommand {
+    pub attachment_id: String,
+    pub trade_id: String,
 }
 
 #[cfg(test)]

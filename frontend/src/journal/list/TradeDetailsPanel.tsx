@@ -3,7 +3,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TradeDetails } from "../../kernel";
+import {
+  ALLOWED_ATTACHMENT_EXTENSIONS,
+  MAX_ATTACHMENT_BYTES,
+  type AttachmentData,
+  type TradeDetails,
+} from "../../kernel";
 import type { TradeListBridge } from "./bridge";
 import { displayValue, effectiveDiff } from "./effective";
 
@@ -51,6 +56,9 @@ export function TradeDetailsPanel({
   const [ovReason, setOvReason] = useState("");
   // پیوست
   const [linkKind, setLinkKind] = useState<(typeof LINK_KINDS)[number]>("chart");
+  /** پیوست در حال بزرگ‌نمایی (فاز ۱.۱۳) */
+  const [zoom, setZoom] = useState<AttachmentData | null>(null);
+  const [zoomBusy, setZoomBusy] = useState(false);
   // پیام موفقیت
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -147,6 +155,16 @@ export function TradeDetailsPanel({
     );
 
   const addAttachment = async (file: File) => {
+    // اعتبارسنجی سمت UI — هم‌تراز قواعد کرنل (فاز ۱.۱۳)
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setError(t("list.attachmentTooBig", { max: MAX_ATTACHMENT_BYTES / (1024 * 1024) }));
+      return;
+    }
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!ALLOWED_ATTACHMENT_EXTENSIONS.includes(ext as (typeof ALLOWED_ATTACHMENT_EXTENSIONS)[number])) {
+      setError(t("list.attachmentTypeNotAllowed", { ext }));
+      return;
+    }
     const data = new Uint8Array(await file.arrayBuffer());
     await run(
       () =>
@@ -159,6 +177,31 @@ export function TradeDetailsPanel({
         }),
       t("list.attachmentAdded"),
     );
+  };
+
+  /** حذف پیوند پیوست از معامله — فراداده/فایل حفظ می‌شود (فاز ۱.۱۳). */
+  const unlinkAttachment = (attachmentId: string) =>
+    run(
+      () =>
+        bridge.executeCommand("domain.unlink_attachment_from_trade", {
+          attachment_id: attachmentId,
+          trade_id: tradeId,
+        }),
+      t("list.attachmentUnlinked"),
+    );
+
+  /** باز کردن بزرگ‌نمایی — خواندن بایت‌های اصلی با تأیید صحت روی خواندن. */
+  const openZoom = async (attachmentId: string) => {
+    setZoomBusy(true);
+    setError(null);
+    try {
+      const d = await bridge.attachmentData(attachmentId, false);
+      setZoom(d);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setZoomBusy(false);
+    }
   };
 
   if (error && !details) {
@@ -355,20 +398,22 @@ export function TradeDetailsPanel({
           </div>
         </section>
 
-        {/* پیوست‌ها */}
+        {/* پیوست‌ها — شبکه پیش‌نمایش با بندانگشتی/فراداده/حذف پیوند (فاز ۱.۱۳) */}
         <section className="mt-3">
           <h3 className="font-bold">{t("list.attachments")}</h3>
           {d.attachments.length === 0 ? (
             <p className="text-xs text-text-muted">{t("list.none")}</p>
           ) : (
-            <ul className="mt-1 flex flex-col gap-1">
+            <ul className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="attachment-grid">
               {d.attachments.map((a) => (
-                <li key={a.id} className="flex items-center gap-2 rounded bg-surface-alt px-2 py-1 text-xs">
-                  <span data-testid={`attachment-${a.file_name}`}>
-                    {a.file_name} ({Math.max(1, Math.ceil(a.size_bytes / 1024))} KB)
-                  </span>
-                  <span className="text-text-muted">{t(`journal.link_${a.link_kind}`)}</span>
-                </li>
+                <AttachmentCard
+                  key={a.id}
+                  att={a}
+                  bridge={bridge}
+                  busy={busy}
+                  onZoom={openZoom}
+                  onUnlink={unlinkAttachment}
+                />
               ))}
             </ul>
           )}
@@ -388,13 +433,21 @@ export function TradeDetailsPanel({
               data-testid="attachment-input"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) addAttachment(f);
                 e.target.value = "";
+                if (f) void addAttachment(f);
               }}
               className="text-xs"
             />
           </div>
         </section>
+
+        {/* بزرگ‌نمایی پیوست (فاز ۱.۱۳) */}
+        {zoomBusy && (
+          <div role="status" className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
+            <span className="text-sm text-white">{t("list.loading")}</span>
+          </div>
+        )}
+        {zoom && <ZoomViewer data={zoom} onClose={() => setZoom(null)} />}
 
         {/* فیلدهای سفارشی */}
         {Object.keys(d.custom_values).length > 0 && (
@@ -558,5 +611,154 @@ function LegsSection({ details }: { details: TradeDetails }) {
         )}
       </section>
     </>
+  );
+}
+
+/** کارت یک پیوست — بندانگشتی/فراداده/باز کردن/حذف پیوند (فاز ۱.۱۳). */
+function AttachmentCard(props: {
+  att: TradeDetails["attachments"][number];
+  bridge: TradeListBridge;
+  busy: boolean;
+  onZoom: (attachmentId: string) => void;
+  onUnlink: (attachmentId: string) => void;
+}) {
+  const { att, bridge, busy, onZoom, onUnlink } = props;
+  const { t } = useTranslation();
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [integrity, setIntegrity] = useState<boolean | null>(null);
+
+  // بندانگشتی فقط برای پیوست‌های تصویری بارگذاری می‌شود؛ نتیجه تأیید صحت
+  // فایل اصلی نیز همراه همان خواندن برمی‌گردد.
+  useEffect(() => {
+    if (!att.has_thumbnail) return;
+    let alive = true;
+    bridge
+      .attachmentData(att.id, true)
+      .then((d) => {
+        if (!alive) return;
+        setThumbUrl(`data:${d.content_mime};base64,${d.data_base64}`);
+        setIntegrity(d.integrity_ok);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [att.id, att.has_thumbnail, bridge]);
+
+  const isImage = att.mime_type?.startsWith("image/") ?? att.has_thumbnail;
+
+  return (
+    <li
+      data-testid={`attachment-${att.file_name}`}
+      className="rounded border border-border bg-surface-alt/40 p-1.5"
+    >
+      <button
+        type="button"
+        data-testid={`open-zoom-${att.file_name}`}
+        onClick={() => onZoom(att.id)}
+        disabled={busy}
+        title={t("list.zoomOpen")}
+        className="block w-full"
+      >
+        {thumbUrl ? (
+          <img
+            src={thumbUrl}
+            alt={att.file_name}
+            data-testid={`attachment-thumb-${att.file_name}`}
+            className="mx-auto h-24 w-full rounded object-contain"
+          />
+        ) : (
+          <span data-testid={`attachment-placeholder-${att.file_name}`} className="flex h-24 items-center justify-center text-2xl">
+            {isImage ? "🖼️" : "📄"}
+          </span>
+        )}
+      </button>
+      <div className="mt-1 flex items-center justify-between gap-1">
+        <span className="truncate text-[11px] font-bold" title={att.file_name}>
+          {att.file_name}
+        </span>
+        {integrity !== null && (
+          <span
+            data-testid={`integrity-${att.file_name}`}
+            className={`rounded px-1 text-[10px] ${integrity ? "bg-green-600/20 text-green-700" : "bg-red-600/20 text-red-700"}`}
+            title={t("list.integrityOk")}
+          >
+            {integrity ? "✓" : "✗"}
+          </span>
+        )}
+      </div>
+      <div className="text-[10px] leading-4 text-text-muted" data-testid={`meta-${att.file_name}`}>
+        {t(`journal.link_${att.link_kind}`)} · {Math.max(1, Math.ceil(att.size_bytes / 1024))} KB
+        {att.width !== null && att.height !== null && <> · {att.width}×{att.height}</>}
+        {" · "}
+        <span title={att.blake3_hash} className="font-mono">
+          {att.blake3_hash.slice(0, 8)}…
+        </span>
+      </div>
+      <button
+        type="button"
+        data-testid={`unlink-attachment-${att.file_name}`}
+        disabled={busy}
+        onClick={() => onUnlink(att.id)}
+        className="mt-1 w-full rounded border border-border px-1 py-0.5 text-[10px] hover:bg-red-600/10 disabled:opacity-40"
+      >
+        {t("list.unlink")}
+      </button>
+    </li>
+  );
+}
+
+/** نمایشگر بزرگ پیوست — تصویر یا فراداده برای فایل غیرتصویری (فاز ۱.۱۳). */
+function ZoomViewer({ data, onClose }: { data: AttachmentData; onClose: () => void }) {
+  const { t } = useTranslation();
+  const isRenderable = data.content_mime.startsWith("image/");
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      data-testid="zoom-viewer"
+      dir="rtl"
+    >
+      <div className="max-h-full w-full max-w-2xl overflow-auto rounded bg-surface p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-bold">{data.file_name}</h3>
+          <button
+            type="button"
+            data-testid="zoom-close"
+            onClick={onClose}
+            className="rounded border border-border px-3 py-1 text-xs"
+          >
+            {t("list.close")}
+          </button>
+        </div>
+        {isRenderable ? (
+          <img
+            src={`data:${data.content_mime};base64,${data.data_base64}`}
+            alt={data.file_name}
+            data-testid="zoom-image"
+            className="mx-auto max-h-[60vh] rounded object-contain"
+          />
+        ) : (
+          <p className="py-8 text-center text-xs text-text-muted">{t("list.noPreview")}</p>
+        )}
+        <dl data-testid="zoom-meta" className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <dt className="text-text-muted">{t("list.mime")}</dt>
+          <dd>{data.content_mime}</dd>
+          <dt className="text-text-muted">{t("list.sizeBytes")}</dt>
+          <dd>{data.size_bytes.toLocaleString("fa-IR")}</dd>
+          {data.width !== null && data.height !== null && (
+            <>
+              <dt className="text-text-muted">{t("list.dimensions")}</dt>
+              <dd>{data.width}×{data.height}</dd>
+            </>
+          )}
+          <dt className="text-text-muted">{t("list.integrity")}</dt>
+          <dd data-testid="zoom-integrity">
+            {data.integrity_ok ? t("list.integrityOk") : t("list.integrityFailed")}
+          </dd>
+          <dt className="text-text-muted">blake3</dt>
+          <dd className="break-all font-mono text-[10px]">{data.blake3_hash}</dd>
+        </dl>
+      </div>
+    </div>
   );
 }

@@ -159,6 +159,78 @@ pub fn set_thumbnail_path(db: &Database, id: &str, thumbnail_path: &str) -> Resu
     Ok(())
 }
 
+/// به‌روزرسانی هم‌زمان بندانگشتی و ابعاد تصویر اصلی (فاز ۱.۱۳).
+pub fn update_visuals(
+    db: &Database,
+    id: &str,
+    thumbnail_path: Option<&str>,
+    width: Option<i64>,
+    height: Option<i64>,
+) -> Result<(), StorageError> {
+    let n = db
+        .lock()
+        .execute(
+            "UPDATE attachments SET thumbnail_path = ?2, width = ?3, height = ?4 WHERE id = ?1",
+            rusqlite::params![id, thumbnail_path, width, height],
+        )
+        .map_err(StorageError::from)?;
+    if n == 0 {
+        return Err(StorageError::not_found("attachment", id));
+    }
+    Ok(())
+}
+
+/// حداکثر ضلع بندانگشتی.
+pub const THUMBNAIL_MAX_EDGE: u32 = 320;
+
+/// اطلاعات بندانگشتی تولیدشده — مسیر فایل بندانگشتی و ابعاد تصویر اصلی.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThumbnailInfo {
+    pub thumbnail_path: String,
+    pub width: i64,
+    pub height: i64,
+}
+
+/// تولید بندانگشتی برای پیوست‌های تصویری با کرت `image`.
+///
+/// برای فایل غیرتصویری یا خراب `Ok(None)` برمی‌گرداند تا ثبت پیوست
+/// متوقف نشود؛ فقط خطای دیسک خطا محسوب می‌شود. خروجی همیشه PNG است.
+pub fn generate_thumbnail(
+    src: &Path,
+    thumbs_dir: &Path,
+    stem: &str,
+) -> Result<Option<ThumbnailInfo>, StorageError> {
+    let decoded = image::ImageReader::open(src)
+        .map_err(|e| StorageError::attachment(format!("thumbnail open: {e}")))?
+        .with_guessed_format()
+        .map_err(|e| StorageError::attachment(format!("thumbnail format: {e}")))?
+        .decode();
+    let img = match decoded {
+        Ok(img) => img,
+        // محتوای غیرتصویری یا پشتیبانی‌نشده — بندانگشتی ندارد
+        Err(image::ImageError::Decoding(_))
+        | Err(image::ImageError::Unsupported(_))
+        | Err(image::ImageError::Limits(_))
+        | Err(image::ImageError::Parameter(_)) => return Ok(None),
+        Err(e) => {
+            return Err(StorageError::attachment(format!("thumbnail decode: {e}")));
+        }
+    };
+
+    std::fs::create_dir_all(thumbs_dir)
+        .map_err(|e| StorageError::attachment(format!("thumbnail dir: {e}")))?;
+    let dst = thumbs_dir.join(format!("{stem}_thumb.png"));
+    img.thumbnail(THUMBNAIL_MAX_EDGE, THUMBNAIL_MAX_EDGE)
+        .save_with_format(&dst, image::ImageFormat::Png)
+        .map_err(|e| StorageError::attachment(format!("thumbnail save: {e}")))?;
+
+    Ok(Some(ThumbnailInfo {
+        thumbnail_path: dst.display().to_string(),
+        width: img.width() as i64,
+        height: img.height() as i64,
+    }))
+}
+
 fn map_row(r: &rusqlite::Row<'_>) -> Result<AttachmentMetadata, rusqlite::Error> {
     Ok(AttachmentMetadata {
         id: r.get(0)?,
@@ -257,5 +329,54 @@ mod tests {
         let db = setup();
         let err = register_attachment(&db, "nope", Path::new("Z:/does/not/exist"), None, None, None).unwrap_err();
         assert_eq!(err.code(), 1109);
+    }
+
+    #[test]
+    fn thumbnail_generated_for_real_png() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("shot.png");
+        // PNG واقعی 800×600 با کرت image
+        let img = image::RgbaImage::from_pixel(800, 600, image::Rgba([120, 40, 200, 255]));
+        img.save(&src).unwrap();
+
+        let thumbs = tmp.path().join("thumbs");
+        let info = generate_thumbnail(&src, &thumbs, "shot").unwrap().expect("png must have thumbnail");
+        assert_eq!(info.width, 800);
+        assert_eq!(info.height, 600);
+        // طولانی‌ترین ضلع به ۳۲۰ محدود شده
+        let thumb = image::open(&info.thumbnail_path).unwrap();
+        assert!(thumb.width().max(thumb.height()) <= THUMBNAIL_MAX_EDGE);
+        assert_eq!((thumb.width(), thumb.height()), (320, 240));
+    }
+
+    #[test]
+    fn thumbnail_none_for_non_image() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("notes.txt");
+        std::fs::write(&src, b"plain text content").unwrap();
+        let info = generate_thumbnail(&src, &tmp.path().join("thumbs"), "notes").unwrap();
+        assert!(info.is_none(), "text file must not produce a thumbnail");
+
+        // بایت‌های تصویری خراب هم None هستند نه خطا
+        let corrupt = tmp.path().join("corrupt.png");
+        std::fs::write(&corrupt, [0x89, b'P', b'N', b'G', 0, 1, 2, 3]).unwrap();
+        let info2 = generate_thumbnail(&corrupt, &tmp.path().join("thumbs"), "corrupt").unwrap();
+        assert!(info2.is_none());
+    }
+
+    #[test]
+    fn update_visuals_persists_dimensions_and_thumb() {
+        let db = setup();
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("z.png");
+        std::fs::write(&f, b"img").unwrap();
+        let m = register_attachment(&db, "z.png", &f, Some("image/png"), None, None).unwrap();
+        assert!(m.width.is_none() && m.height.is_none());
+
+        update_visuals(&db, &m.id, Some("thumbs/z_thumb.png"), Some(1920), Some(1080)).unwrap();
+        let got = get_attachment(&db, &m.id).unwrap();
+        assert_eq!(got.width, Some(1920));
+        assert_eq!(got.height, Some(1080));
+        assert_eq!(got.thumbnail_path.as_deref(), Some("thumbs/z_thumb.png"));
     }
 }
