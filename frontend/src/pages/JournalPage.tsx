@@ -1,6 +1,6 @@
-//! صفحه ژورنال — میزبان فرم ثبت معامله با پیاده‌سازی واقعی پل کرنل.
+//! صفحه ژورنال — تب فهرست معاملات (فاز ۱.۱۲) و فرم ثبت معامله (فاز ۱.۱۱).
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   attachmentIngest,
@@ -13,6 +13,7 @@ import {
 } from "../kernel";
 import type { TradeFormBridge } from "../journal/types";
 import { TradeForm } from "../journal/TradeForm";
+import { TradeListPage } from "../journal/list/TradeListPage";
 
 /** پیاده‌سازی پل فرم روی دستورات IPC کرنل. */
 function useKernelBridge(): TradeFormBridge {
@@ -34,21 +35,59 @@ function useKernelBridge(): TradeFormBridge {
   );
 }
 
-/**
- * صفحه ثبت معامله — فاز ۱.۱۱ فقط فرم ثبت؛ لیست و جزئیات در فاز ۱.۱۲.
- */
+type JournalTab = "list" | "register";
+
+/** صفحه ژورنال — فهرست/جزئیات معاملات و ثبت معامله جدید. */
 export function JournalPage() {
   const { t } = useTranslation();
   const bridge = useKernelBridge();
+  const [tab, setTab] = useState<JournalTab>("list");
+  /** پس از هر ثبت، فهرست دوباره خوانده می‌شود. */
+  const [savedTick, setSavedTick] = useState(0);
 
   const onSaved = useCallback(() => {
-    // فاز ۱.۱۲: به‌روزرسانی لیست معاملات و آمار داشبورد
+    setSavedTick((n) => n + 1);
+    setTab("list");
   }, []);
+
+  const tabBtn = (active: boolean) =>
+    `rounded px-4 py-1.5 text-sm font-bold ${
+      active ? "bg-accent text-surface" : "border border-border hover:bg-accent-soft"
+    }`;
 
   return (
     <div data-testid="page-journal" className="flex flex-col gap-4">
-      <p className="text-xs text-text-muted">{t("journal.hint")}</p>
-      <TradeForm bridge={bridge} onSaved={onSaved} />
+      <div role="tablist" className="flex gap-2" dir="rtl">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "list"}
+          data-testid="journal-tab-list"
+          onClick={() => setTab("list")}
+          className={tabBtn(tab === "list")}
+        >
+          {t("list.tabList")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "register"}
+          data-testid="journal-tab-register"
+          onClick={() => setTab("register")}
+          className={tabBtn(tab === "register")}
+        >
+          {t("list.tabRegister")}
+        </button>
+      </div>
+
+      {tab === "list" ? (
+        <TradeListPage refreshSignal={savedTick} />
+      ) : (
+        <>
+          <p className="text-xs text-text-muted">{t("journal.hint")}</p>
+          <TradeForm bridge={bridge} onSaved={onSaved} />
+        </>
+      )}
     </div>
   );
 }

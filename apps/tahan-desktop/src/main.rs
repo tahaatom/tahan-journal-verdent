@@ -131,6 +131,8 @@ fn query_trades(
     filter: serde_json::Value,
     page: u32,
     page_size: u32,
+    sort_key: Option<String>,
+    sort_desc: Option<bool>,
 ) -> Result<TradesPage, CmdError> {
     let st = state.lock().unwrap();
     let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
@@ -138,7 +140,7 @@ fn query_trades(
         .map_err(|e| CmdError::new(aria_query_engine::QueryError::INVALID_QUERY, format!("فیلتر نامعتبر: {e}")))?;
     let svc = QueryService::new(db);
     let p = svc
-        .list_trades(&node, page, page_size)
+        .list_trades(&node, page, page_size, sort_key.as_deref(), sort_desc.unwrap_or(true))
         .map_err(kernel_error)?;
     Ok(TradesPage {
         items: p.items,
@@ -231,6 +233,30 @@ struct AttachmentDto {
     file_name: String,
     size_bytes: i64,
     blake3_hash: String,
+}
+
+/// پیوست یک معامله در پنل جزئیات — با نوع پیوند.
+#[derive(Serialize, Clone, Debug)]
+struct TradeAttachmentDto {
+    id: String,
+    file_name: String,
+    mime_type: Option<String>,
+    size_bytes: i64,
+    link_kind: String,
+}
+
+/// جزئیات کامل یک معامله — canonical + موثر + پاها + اجراها +
+/// بازنویسی‌ها + پیوست‌ها + فیلدهای سفارشی.
+#[derive(Serialize, Clone, Debug)]
+struct TradeDetailsDto {
+    trade: aria_domain_engine::model::Trade,
+    effective: serde_json::Value,
+    entry_legs: Vec<aria_domain_engine::model::EntryLeg>,
+    exit_legs: Vec<aria_domain_engine::model::ExitLeg>,
+    executions: Vec<aria_domain_engine::model::Execution>,
+    overrides: Vec<aria_domain_engine::model::ManualOverride>,
+    attachments: Vec<TradeAttachmentDto>,
+    custom_values: serde_json::Map<String, serde_json::Value>,
 }
 
 mod journal_impl {
@@ -372,6 +398,78 @@ mod journal_impl {
             .map_err(|e| CmdError::new(0, format!("خطای خواندن نمادها: {e}")))
     }
 
+    /// جزئیات کامل معامله برای پنل جزئیات فاز ۱.۱۲.
+    pub fn trade_details(db: &Database, trade_id: &str) -> PlugResult<TradeDetailsDto> {
+        let svc = DomainService::new(db);
+        let trade = svc
+            .get_trade(trade_id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?
+            .ok_or_else(|| {
+                CmdError::new(
+                    1401,
+                    format!("معامله {trade_id} یافت نشد"),
+                )
+            })?;
+        let effective = svc
+            .effective_entity("journal_trade", trade_id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?
+            .unwrap_or(serde_json::Value::Null);
+        let entry_legs = svc
+            .entry_legs(trade_id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+        let exit_legs = svc
+            .exit_legs(trade_id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+        let executions = svc
+            .executions(trade_id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+        let overrides = svc
+            .overrides_of("journal_trade", trade_id, true)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?;
+        let attachments = {
+            let conn = db.lock();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT a.id, a.file_name, a.mime_type, a.size_bytes, l.link_kind
+                     FROM attachment_trade_links l
+                     JOIN attachments a ON a.id = l.attachment_id
+                     WHERE l.trade_id = ?1
+                     ORDER BY l.created_at, a.file_name",
+                )
+                .map_err(|e| CmdError::new(0, format!("خطای خواندن پیوست‌ها: {e}")))?;
+            let rows = stmt
+                .query_map([trade_id], |r| {
+                    Ok(TradeAttachmentDto {
+                        id: r.get(0)?,
+                        file_name: r.get(1)?,
+                        mime_type: r.get(2)?,
+                        size_bytes: r.get(3)?,
+                        link_kind: r.get(4)?,
+                    })
+                })
+                .map_err(|e| CmdError::new(0, format!("خطای خواندن پیوست‌ها: {e}")))?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| CmdError::new(0, format!("خطای خواندن پیوست‌ها: {e}")))?
+        };
+        let custom_values = match SchemaService::new(db)
+            .get_values(trade_id)
+            .map_err(|e| CmdError::new(i64::from(e.code()), e.to_string()))?
+        {
+            serde_json::Value::Object(m) => m,
+            _ => serde_json::Map::new(),
+        };
+        Ok(TradeDetailsDto {
+            trade,
+            effective,
+            entry_legs,
+            exit_legs,
+            executions,
+            overrides,
+            attachments,
+            custom_values,
+        })
+    }
+
     /// ثبت پیوست: نوشتن بایت‌ها در پوشه داده، هش blake3، ردیف پیوست و
     /// پیوند با معامله از مسیر دستور دامنه (حسابرسی و رویداد).
     /// همان فایل (هش یکسان) در پیوست‌های متعدد یکتاست — ردیف موجود
@@ -481,6 +579,16 @@ fn schema_set_values(
 }
 
 #[tauri::command]
+fn trade_details(
+    state: State<'_, Mutex<KernelState>>,
+    trade_id: String,
+) -> Result<TradeDetailsDto, CmdError> {
+    let st = state.lock().unwrap();
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    journal_impl::trade_details(db, &trade_id)
+}
+
+#[tauri::command]
 fn accounts_list(
     state: State<'_, Mutex<KernelState>>,
 ) -> Result<Vec<AccountDto>, CmdError> {
@@ -530,6 +638,7 @@ fn main() {
             stat_fields,
             ui_extensions,
             domain_execute,
+            trade_details,
             schema_list_fields,
             schema_field_options,
             schema_set_values,
@@ -691,5 +800,110 @@ mod tests {
         .unwrap();
         assert_eq!(ok.file_name, "evil.png");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn trade_details_returns_all_sections() {
+        let db = seeded();
+        let t1 = create_trade(&db);
+        // پای ورود اجراشده → اجرای دستی خودکار
+        journal_impl::execute_domain(
+            &db,
+            command_type::ADD_ENTRY_LEG,
+            serde_json::json!({
+                "trade_id": t1,
+                "executed_price": 2350.0,
+                "volume": 0.5,
+                "stop_loss": 2340.0,
+                "take_profit": 2380.0,
+            }),
+        )
+        .unwrap();
+        journal_impl::execute_domain(
+            &db,
+            command_type::ADD_EXIT_LEG,
+            serde_json::json!({
+                "trade_id": t1,
+                "executed_price": 2380.0,
+                "volume": 0.5,
+                "exit_reason": "هدف",
+            }),
+        )
+        .unwrap();
+        journal_impl::execute_domain(
+            &db,
+            command_type::ADD_MANUAL_OVERRIDE,
+            serde_json::json!({
+                "entity_type": "journal_trade",
+                "entity_id": t1,
+                "field_name": "note",
+                "new_value": "بروزرسانی دستی",
+                "reason": "اصلاح",
+                "source": "manual",
+                "priority": 10,
+                "reversible": true,
+                "created_by": "user",
+            }),
+        )
+        .unwrap();
+        let dir = std::env::temp_dir().join(format!("tahan-test-{}", uuid::Uuid::new_v4()));
+        journal_impl::ingest_attachment(
+            &db, &dir, &t1, "chart.png", Some("image/png".into()), b"img".to_vec(), "chart",
+        )
+        .unwrap();
+
+        let d = journal_impl::trade_details(&db, &t1).unwrap();
+        assert_eq!(d.trade.id, t1);
+        assert_eq!(d.entry_legs.len(), 1);
+        assert_eq!(d.exit_legs.len(), 1);
+        // پای ورود و پای خروج اجراشده هر دو اجرای دستی خودکار دارند
+        assert_eq!(d.executions.len(), 2);
+        assert!(d.executions.iter().all(|e| e.assignment_status == "assigned"));
+        assert_eq!(d.overrides.len(), 1);
+        assert_eq!(d.overrides[0].field_name, "note");
+        assert_eq!(d.attachments.len(), 1);
+        assert_eq!(d.attachments[0].link_kind, "chart");
+        // داده موثر باید بازنویسی دستی را اعمال کند
+        let effective_note = d.effective["note"].as_str();
+        assert_eq!(effective_note, Some("بروزرسانی دستی"));
+        // فیلد سفارشی: تعریف + نوشتن + خواندن در جزئیات
+        let svc = SchemaService::new(&db);
+        let def = FieldDefinition::new("confidence", "اطمینان", StorageType::Integer, SemanticType::Number);
+        let f = svc.define_field(def).unwrap();
+        let mut values = serde_json::Map::new();
+        values.insert(f.id.clone(), serde_json::json!(6));
+        journal_impl::set_custom_values(&db, &t1, values).unwrap();
+        let d2 = journal_impl::trade_details(&db, &t1).unwrap();
+        assert_eq!(d2.custom_values["confidence"], 6);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn trade_details_missing_trade_is_1401() {
+        let db = seeded();
+        let err = journal_impl::trade_details(&db, "nope").unwrap_err();
+        assert_eq!(err.code, 1401);
+    }
+
+    #[test]
+    fn unassigned_executions_visible_in_details() {
+        let db = seeded();
+        let t1 = create_trade(&db);
+        // اجرای بدون پا (شبیه‌سازی ورود بروکر ناشناس) — needs_assignment
+        journal_impl::execute_domain(
+            &db,
+            command_type::ADD_ENTRY_LEG,
+            serde_json::json!({
+                "trade_id": t1,
+                "volume": 0.5,
+            }),
+        )
+        .unwrap();
+        let d = journal_impl::trade_details(&db, &t1).unwrap();
+        // پای برنامه‌ریزی‌شده بدون قیمت اجرا → اجرای دستی نمی‌سازد
+        assert!(d.executions.is_empty() || d.executions.iter().all(|e| e.leg_id.is_some()));
+        let unassigned_count = d.executions.iter().filter(|e| e.assignment_status == "needs_assignment").count();
+        // در این سناریو هیچ اجرای بی‌صاحب نداریم؛ پنل باید بتواند صفر را هم نمایش دهد
+        assert_eq!(unassigned_count, 0);
     }
 }

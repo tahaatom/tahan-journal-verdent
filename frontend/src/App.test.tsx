@@ -41,8 +41,10 @@ describe("App shell", () => {
     expect(screen.getByTestId("page-title")).toHaveTextContent("داشبورد");
     await user.click(screen.getByTestId("nav-journal"));
     expect(screen.getByTestId("page-title")).toHaveTextContent("ژورنال معاملات");
-    // فاز ۱.۱۱: صفحه ژورنال فرم ثبت معامله است (نه جای‌نگهدار)
+    // فاز ۱.۱۲: صفحه ژورنال تب فهرست/ثبت دارد؛ فرم ثبت در تب ثبت معامله است
     expect(await screen.findByTestId("page-journal")).toBeInTheDocument();
+    expect(screen.getByTestId("journal-tab-list")).toBeInTheDocument();
+    await user.click(screen.getByTestId("journal-tab-register"));
     expect(screen.getByTestId("mode-fast")).toHaveTextContent("سریع");
     expect(screen.getByTestId("mode-full")).toHaveTextContent("کامل");
     await user.click(screen.getByTestId("nav-plugins"));

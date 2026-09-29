@@ -205,4 +205,166 @@ export function attachmentIngest(args: {
   });
 }
 
+// ===================== فاز ۱.۱۲ — فهرست و جزئیات =====================
+
+/** سطر خلاصه فهرست معاملات — مطابق `TradeListRow` سمت کرنل. */
+export interface TradeListRow {
+  id: string;
+  account_id: string;
+  symbol_id: string;
+  direction: string;
+  status: string;
+  strategy: string | null;
+  timeframe: string | null;
+  session: string | null;
+  entry_time: string | null;
+  exit_time: string | null;
+  realized_pnl: number | null;
+  realized_r: number | null;
+}
+
+/** صفحه‌بندی سمت کرنل. */
+export interface PagedTrades {
+  items: TradeListRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** کلیدهای مجاز مرتب‌سازی — هم‌تراز whitelist کرنل. */
+export const SORT_KEYS = ["entry_time", "exit_time", "realized_pnl", "realized_r"] as const;
+export type SortKey = (typeof SORT_KEYS)[number];
+
+export function queryTrades(args: {
+  filter: unknown;
+  page: number;
+  pageSize: number;
+  sortKey?: SortKey | null;
+  sortDesc?: boolean;
+}): Promise<PagedTrades> {
+  return invoke<PagedTrades>("query_trades", {
+    filter: args.filter,
+    page: args.page,
+    pageSize: args.pageSize,
+    sortKey: args.sortKey ?? null,
+    sortDesc: args.sortDesc ?? true,
+  });
+}
+
+/** پای ورود در پنل جزئیات. */
+export interface EntryLegInfo {
+  id: string;
+  trade_id: string;
+  planned_price: number | null;
+  executed_price: number | null;
+  volume: number;
+  stop_loss: number | null;
+  take_profit: number | null;
+  entry_time: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** پای خروج در پنل جزئیات. */
+export interface ExitLegInfo {
+  id: string;
+  trade_id: string;
+  exit_reason: string | null;
+  executed_price: number | null;
+  volume: number;
+  exit_time: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** اجرا — فیل بروکر یا دستی. */
+export interface ExecutionInfo {
+  id: string;
+  trade_id: string | null;
+  leg_id: string | null;
+  leg_kind: string | null;
+  kind: string;
+  direction: string;
+  price: number;
+  volume: number;
+  executed_at: string | null;
+  assignment_status: string;
+  created_at: string;
+}
+
+/** بازنویسی دستی. */
+export interface OverrideInfo {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  field_name: string;
+  previous_value: string | null;
+  new_value: string | null;
+  reason: string | null;
+  source: string;
+  priority: number;
+  reversible: boolean;
+  created_by: string;
+  created_at: string;
+  reverted_at: string | null;
+}
+
+/** پیوست یک معامله در پنل جزئیات. */
+export interface TradeAttachmentInfo {
+  id: string;
+  file_name: string;
+  mime_type: string | null;
+  size_bytes: number;
+  link_kind: string;
+}
+
+/** معامله کامل — canonical. */
+export interface TradeFull {
+  id: string;
+  account_id: string;
+  symbol_id: string;
+  direction: string;
+  status: string;
+  strategy: string | null;
+  timeframe: string | null;
+  session: string | null;
+  market_condition: string | null;
+  entry_type: string | null;
+  note: string | null;
+  tags: string | null;
+  emotions: string | null;
+  mistakes: string | null;
+  entry_time: string | null;
+  exit_time: string | null;
+  initial_stop_loss: number | null;
+  take_profit: number | null;
+  manual_risk: number | null;
+  risk_calculation_status: string;
+  planned_r: number | null;
+  realized_pnl: number | null;
+  realized_r: number | null;
+  trade_r: number | null;
+  commission: number;
+  swap: number;
+}
+
+/** جزئیات کامل معامله — مطابق `TradeDetailsDto` سمت پل. */
+export interface TradeDetails {
+  trade: TradeFull;
+  effective: Record<string, unknown> | null;
+  entry_legs: EntryLegInfo[];
+  exit_legs: ExitLegInfo[];
+  executions: ExecutionInfo[];
+  overrides: OverrideInfo[];
+  attachments: TradeAttachmentInfo[];
+  /** مقادیر فیلدهای سفارشی کلیدگذاری‌شده با technical_key */
+  custom_values: Record<string, unknown>;
+}
+
+export function tradeDetails(tradeId: string): Promise<TradeDetails> {
+  return invoke<TradeDetails>("trade_details", { tradeId });
+}
+
 export const KERNEL_READY_EVENT = "kernel://ready";

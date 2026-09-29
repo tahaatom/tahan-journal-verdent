@@ -176,37 +176,59 @@ impl<'a> QueryService<'a> {
         Self { db }
     }
 
-    /// فهرست صفحه‌بندی‌شده معاملات با فیلتر مرکب.
-    pub fn list_trades(
-        &self,
-        node: &FilterNode,
-        page: u32,
-        page_size: u32,
-    ) -> Result<PagedTrades, QueryError> {
-        if page == 0 {
-            return Err(QueryError::invalid_query("شماره صفحه از ۱ شروع می‌شود"));
+/// کلیدهای مجاز مرتب‌سازی فهرست — هر کلید دیگر به پیش‌فرض می‌رود.
+/// (whitelist — هیچ عبارت SQL از ورودی بیرونی ساخته نمی‌شود)
+fn sort_column(key: &str) -> Option<&'static str> {
+    match key {
+        "entry_time" => Some("entry_time"),
+        "exit_time" => Some("exit_time"),
+        "realized_pnl" => Some("realized_pnl"),
+        "realized_r" => Some("realized_r"),
+        _ => None,
+    }
+}
+
+/// فهرست صفحه‌بندی‌شده معاملات با فیلتر مرکب و مرتب‌سازی فهرست‌شده.
+///
+/// پیش‌فرض مرتب‌سازی: `entry_time DESC, id DESC`. کلید غیرمجاز هم
+/// به همین پیش‌فرض می‌رود (نه خطا) تا فرانت‌اند بتواند کلید دلخواه بفرستد.
+pub fn list_trades(
+    &self,
+    node: &FilterNode,
+    page: u32,
+    page_size: u32,
+    sort_key: Option<&str>,
+    sort_desc: bool,
+) -> Result<PagedTrades, QueryError> {
+    if page == 0 {
+        return Err(QueryError::invalid_query("شماره صفحه از ۱ شروع می‌شود"));
+    }
+    if page_size == 0 {
+        return Err(QueryError::invalid_query("اندازه صفحه باید حداقل ۱ باشد"));
+    }
+    if page_size > MAX_PAGE_SIZE {
+        return Err(QueryError::budget_exceeded(format!(
+            "اندازه صفحه حداکثر {MAX_PAGE_SIZE} است"
+        )));
+    }
+    let order = match sort_key.and_then(Self::sort_column) {
+        Some(col) => {
+            let dir = if sort_desc { "DESC" } else { "ASC" };
+            // NULLها همیشه در انتهای مرتب‌سازی می‌مانند
+            format!("{col} IS NULL, {col} {dir}, id DESC")
         }
-        if page_size == 0 {
-            return Err(QueryError::invalid_query("اندازه صفحه باید حداقل ۱ باشد"));
-        }
-        if page_size > MAX_PAGE_SIZE {
-            return Err(QueryError::budget_exceeded(format!(
-                "اندازه صفحه حداکثر {MAX_PAGE_SIZE} است"
-            )));
-        }
-        let conn = self.db.lock();
-        with_row_budget(&conn, DEFAULT_ROW_BUDGET, || {
-            let filter = prepared_filter(&conn, node)?;
-            let base = format!("FROM journal_trades{}", and_not_deleted(&filter.where_clause));
-            let total: i64 = conn.query_row(
-                &format!("SELECT COUNT(*) {base}"),
-                rusqlite::params_from_iter(filter.params.clone()),
-                |r| r.get(0),
-            )?;
-            let sql = format!(
-                "SELECT {LIST_COLUMNS} {base}
-                 ORDER BY entry_time DESC, id DESC LIMIT ? OFFSET ?"
-            );
+        None => "entry_time DESC, id DESC".to_string(),
+    };
+    let conn = self.db.lock();
+    with_row_budget(&conn, DEFAULT_ROW_BUDGET, || {
+        let filter = prepared_filter(&conn, node)?;
+        let base = format!("FROM journal_trades{}", and_not_deleted(&filter.where_clause));
+        let total: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) {base}"),
+            rusqlite::params_from_iter(filter.params.clone()),
+            |r| r.get(0),
+        )?;
+        let sql = format!("SELECT {LIST_COLUMNS} {base} ORDER BY {order} LIMIT ? OFFSET ?");
             let mut params = filter.params.clone();
             params.push(SqlValue::Integer(page_size as i64));
             params.push(SqlValue::Integer(((page - 1) as i64) * page_size as i64));
@@ -621,8 +643,7 @@ mod tests {
                     ..Default::default()
                 })),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap();
         assert_eq!(page.total, 2);
         assert!(page.items.iter().all(|t| t.symbol_id == sym));
@@ -652,8 +673,7 @@ mod tests {
                         ..Default::default()
                     })),
                     1,
-                    50,
-                )
+                    50, None, false)
                 .unwrap();
             assert_eq!(page.total, expected, "result={result:?}");
         }
@@ -677,8 +697,7 @@ mod tests {
                     ..Default::default()
                 })),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.items[0].id, "t2");
@@ -706,8 +725,7 @@ mod tests {
                     ..Default::default()
                 })),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.items[0].id, "t1");
@@ -718,8 +736,7 @@ mod tests {
                     ..Default::default()
                 })),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap();
         assert_eq!(page.total, 1);
     }
@@ -752,7 +769,7 @@ mod tests {
                 })),
             ],
         };
-        let page = svc.list_trades(&node, 1, 50).unwrap();
+        let page = svc.list_trades(&node, 1, 50, None, false).unwrap();
         assert_eq!(page.total, 2);
         let ids: Vec<&str> = page.items.iter().map(|t| t.id.as_str()).collect();
         assert!(ids.contains(&"t1") && ids.contains(&"t3"));
@@ -763,7 +780,7 @@ mod tests {
         let db = db();
         let svc = QueryService::new(&db);
         let err = svc
-            .list_trades(&FilterNode::Any { children: vec![] }, 1, 50)
+            .list_trades(&FilterNode::Any { children: vec![] }, 1, 50, None, false)
             .unwrap_err();
         assert_eq!(err.code(), 1701);
     }
@@ -791,7 +808,7 @@ mod tests {
             field_key: "confidence".into(),
             op,
         });
-        let count = |node| svc.list_trades(&node, 1, 50).unwrap().total;
+        let count = |node| svc.list_trades(&node, 1, 50, None, false).unwrap().total;
         use CustomFieldOp as Op;
         use CustomValue as V;
         assert_eq!(count(cf(Op::Equals { value: V::Integer { value: 70 } })), 1);
@@ -832,8 +849,7 @@ mod tests {
                     op: CustomFieldOp::Contains { value: "نقدینگی".into() },
                 }),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.items[0].id, "t1");
@@ -858,8 +874,7 @@ mod tests {
                     op: CustomFieldOp::Exists,
                 }),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap_err();
         assert_eq!(err.code(), 1703);
         // فیلد ناموجود
@@ -870,8 +885,7 @@ mod tests {
                     op: CustomFieldOp::Exists,
                 }),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap_err();
         assert_eq!(err.code(), 1703);
     }
@@ -895,8 +909,7 @@ mod tests {
                     op: CustomFieldOp::Equals { value: CustomValue::Text { value: "۷۰".into() } },
                 }),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap_err();
         assert_eq!(err.code(), 1701);
         // min روی فیلد متنی → ۱۷۰۱
@@ -913,8 +926,7 @@ mod tests {
                     op: CustomFieldOp::Min { value: 1.0 },
                 }),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap_err();
         assert_eq!(err.code(), 1701);
     }
@@ -957,7 +969,7 @@ mod tests {
         }
         let svc = QueryService::new(&db);
         // فهرست
-        let page = svc.list_trades(&FilterNode::empty(), 1, 50).unwrap();
+        let page = svc.list_trades(&FilterNode::empty(), 1, 50, None, false).unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.items[0].id, "t1");
         // تجمیع
@@ -1023,8 +1035,7 @@ mod tests {
                     op,
                 }),
                 1,
-                50,
-            )
+                50, None, false)
             .unwrap()
             .total
         };
@@ -1057,8 +1068,7 @@ mod tests {
                     op,
                 }),
                 1,
-                50,
-            )
+                50, None, false)
             .map(|p| p.total)
         };
         assert_eq!(run(CustomFieldOp::Equals { value: CustomValue::Text { value: "x".into() } }).unwrap_err().code(), 1701);
@@ -1221,18 +1231,18 @@ mod tests {
             }
         }
         let svc = QueryService::new(&db);
-        let p1 = svc.list_trades(&FilterNode::empty(), 1, 10).unwrap();
+        let p1 = svc.list_trades(&FilterNode::empty(), 1, 10, None, false).unwrap();
         assert_eq!(p1.total, 25);
         assert_eq!(p1.items.len(), 10);
-        let p3 = svc.list_trades(&FilterNode::empty(), 3, 10).unwrap();
+        let p3 = svc.list_trades(&FilterNode::empty(), 3, 10, None, false).unwrap();
         assert_eq!(p3.items.len(), 5);
         // مرتب‌سازی نزولی entry_time: صفحه ۱ جدیدترین‌ها
         assert!(p1.items[0].entry_time >= p1.items[9].entry_time);
         // خطاهای بودجه
-        assert_eq!(svc.list_trades(&FilterNode::empty(), 0, 10).unwrap_err().code(), 1701);
-        assert_eq!(svc.list_trades(&FilterNode::empty(), 1, 0).unwrap_err().code(), 1701);
-        assert_eq!(svc.list_trades(&FilterNode::empty(), 1, 201).unwrap_err().code(), 1702);
-        assert!(svc.list_trades(&FilterNode::empty(), 1, 200).is_ok());
+        assert_eq!(svc.list_trades(&FilterNode::empty(), 0, 10, None, false).unwrap_err().code(), 1701);
+        assert_eq!(svc.list_trades(&FilterNode::empty(), 1, 0, None, false).unwrap_err().code(), 1701);
+        assert_eq!(svc.list_trades(&FilterNode::empty(), 1, 201, None, false).unwrap_err().code(), 1702);
+        assert!(svc.list_trades(&FilterNode::empty(), 1, 200, None, false).is_ok());
     }
 
     #[test]
@@ -1403,7 +1413,7 @@ mod tests {
         assert!((stats.total_pnl.unwrap() - 275_000.0).abs() < 1e-6);
 
         // فهرست صفحه‌بندی‌شده
-        let page = svc.list_trades(&FilterNode::empty(), 7, 200).unwrap();
+        let page = svc.list_trades(&FilterNode::empty(), 7, 200, None, false).unwrap();
         assert_eq!(page.total, 10_000);
         assert_eq!(page.items.len(), 200);
 
@@ -1438,5 +1448,103 @@ mod tests {
             total_elapsed.as_secs() < 30,
             "سناریوی عملکرد بیش از حد کند: {total_elapsed:?}"
         );
+    }
+
+    fn trade_with_note(db: &Database, note: &str, tags: Option<&str>) -> String {
+        let mut conn = db.lock();
+        conn.execute(
+            "INSERT OR IGNORE INTO trading_accounts (id, profile_id, name, created_at, updated_at)
+             VALUES ('a', 'p1', 'حساب', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO symbols (id, name, created_at)
+             VALUES ('s', 's', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        let id = format!("t-{}", uuid::Uuid::new_v4());
+        conn.execute(
+            "INSERT INTO journal_trades (id, account_id, symbol_id, direction, status,
+             commission, swap, note, tags, created_at, updated_at)
+             VALUES (?1,'a','s','buy','open',0,0,?2,?3,datetime('now'),datetime('now'))",
+            rusqlite::params![id, note, tags],
+        )
+        .unwrap();
+        id
+    }
+
+    #[test]
+    fn search_matches_note_and_tags_with_escape() {
+        let db = db();
+        let svc = QueryService::new(&db);
+        let t1 = trade_with_note(&db, "ورود روی سطح حمایت", Some("A+, آزمایشی"));
+        let t2 = trade_with_note(&db, "خروج زودهنگام", Some("برک%اوت"));
+        trade_with_note(&db, "بی‌ربط", None);
+
+        let find = |q: &str| {
+            svc.list_trades(
+                &FilterNode::Simple(Box::new(TradeFilter {
+                    search: Some(q.into()),
+                    ..Default::default()
+                })),
+                1,
+                50,
+                None,
+                false,
+            )
+            .unwrap()
+        };
+        assert_eq!(find("حمایت").total, 1);
+        assert_eq!(find("حمایت").items[0].id, t1);
+        // جست‌وجو در برچسب‌ها هم می‌گردد
+        assert_eq!(find("آزمایشی").total, 1);
+        // % در ورودی کاربر تحت‌الحمایه است — با LIKE wildcards تفسیر نمی‌شود
+        assert_eq!(find("برک%اوت").total, 1);
+        assert_eq!(find("برک%اوت").items[0].id, t2);
+        assert_eq!(find("وجودندارد").total, 0);
+    }
+
+    #[test]
+    fn list_sort_whitelisted_columns_and_nulls_last() {
+        let db = db();
+        let svc = QueryService::new(&db);
+        let a = trade_with_note(&db, "pnl 100", None);
+        let b = trade_with_note(&db, "pnl -5", None);
+        {
+            let mut conn = db.lock();
+            conn.execute(
+                "UPDATE journal_trades SET realized_pnl = 100 WHERE id = ?1",
+                rusqlite::params![a],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE journal_trades SET realized_pnl = -5 WHERE id = ?1",
+                rusqlite::params![b],
+            )
+            .unwrap();
+        }
+        // نزولی: ۱۰۰ قبل از −۵
+        let desc = svc
+            .list_trades(&FilterNode::empty(), 1, 50, Some("realized_pnl"), true)
+            .unwrap();
+        assert_eq!(desc.items[0].id, a);
+        assert_eq!(desc.items[1].id, b);
+        // صعودی: −۵ قبل از ۱۰۰
+        let asc = svc
+            .list_trades(&FilterNode::empty(), 1, 50, Some("realized_pnl"), false)
+            .unwrap();
+        assert_eq!(asc.items[0].id, b);
+        // کلید غیرمجاز → پیش‌فرض (نه خطا)
+        assert!(svc
+            .list_trades(&FilterNode::empty(), 1, 50, Some("note; DROP"), false)
+            .is_ok());
+        // NULLها در انتهای مرتب‌سازی صعودی می‌مانند
+        let c = trade_with_note(&db, "بدون pnl", None);
+        let asc2 = svc
+            .list_trades(&FilterNode::empty(), 1, 50, Some("realized_pnl"), false)
+            .unwrap();
+        assert_eq!(asc2.items.last().unwrap().id, c);
     }
 }

@@ -55,11 +55,15 @@ pub struct TradeFilter {
     pub tags: Option<String>,
     /// احساسات — تطبیق «شامل»
     pub emotions: Option<String>,
+    /// اشتباهات/رفتارها — تطبیق «شامل» (فاز ۱.۱۲)
+    pub mistakes: Option<String>,
     /// از تاریخ/زمان ورود (ISO؛ رشته ۱۰حرفی = فقط تاریخ)
     pub entry_from: Option<String>,
     /// تا تاریخ/زمان ورود (شامل؛ رشته ۱۰حرفی = فقط تاریخ)
     pub entry_to: Option<String>,
     pub result: Option<TradeResult>,
+    /// جست‌وجوی متنی پایه روی note و tags (تطبیق «شامل»؛ فاز ۱.۱۲)
+    pub search: Option<String>,
 }
 
 /// مقدار تایپ‌دار فیلد سفارشی برای مقایسه.
@@ -508,8 +512,23 @@ fn apply_simple(f: &TradeFilter, out: &mut SqlFilter) {
             &[SqlValue::Text(format!("%{escaped}%"))],
         );
     }
+    if let Some(v) = &f.mistakes {
+        let escaped = like_escape(v);
+        out.push_and(
+            r#"mistakes LIKE ? ESCAPE '\'"#,
+            &[SqlValue::Text(format!("%{escaped}%"))],
+        );
+    }
     for (cond, params) in entry_range_conditions(f) {
         out.push_and(&cond, &params);
+    }
+    if let Some(v) = &f.search {
+        let escaped = like_escape(v);
+        let pattern = SqlValue::Text(format!("%{escaped}%"));
+        out.push_and(
+            r#"(journal_trades.note LIKE ? ESCAPE '\' OR journal_trades.tags LIKE ? ESCAPE '\')"#,
+            &[pattern.clone(), pattern],
+        );
     }
     if let Some(r) = f.result {
         let (cond, params) = result_condition(r);
