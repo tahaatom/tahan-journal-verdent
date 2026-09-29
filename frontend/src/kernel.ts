@@ -93,4 +93,116 @@ export function uiExtensions(kind: string): Promise<unknown[]> {
   return invoke<unknown[]>("ui_extensions", { kind });
 }
 
+// ===================== فاز ۱.۱۱ — ماژول ژورنال =====================
+
+/** خلاصه رویداد دامنه — مطابق `EventDto` سمت پل. */
+export interface DomainEvent {
+  event_id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+}
+
+/** حساب معاملاتی برای انتخابگر فرم. */
+export interface AccountDto {
+  id: string;
+  name: string;
+  currency: string;
+}
+
+/** نماد معاملاتی برای انتخابگر فرم. */
+export interface SymbolDto {
+  id: string;
+  name: string;
+}
+
+/** پیوست ثبت‌شده و پیوند‌یافته با معامله. */
+export interface AttachmentDto {
+  id: string;
+  file_name: string;
+  size_bytes: number;
+  blake3_hash: string;
+}
+
+/**
+ * اجرای دستور دامنه (مثل domain.create_trade) به‌صورت اتمیک.
+ * issuer همیشه "ui" است — فرانت‌اند هیچ مسیر دیگری به دامنه ندارد.
+ */
+export function domainExecute(
+  commandType: string,
+  payload: Record<string, unknown>,
+): Promise<DomainEvent[]> {
+  return invoke<DomainEvent[]>("domain_execute", { commandType, payload });
+}
+
+/** تعریف فیلد سفارشی برای رندر داینامیک فرم (فیلدهای فعال). */
+export interface CustomFieldDef {
+  id: string;
+  technical_key: string;
+  display_label: string;
+  description: string | null;
+  storage_type: string;
+  semantic_type: string;
+  unit: string | null;
+  default_value: unknown;
+  required: boolean;
+  active: boolean;
+  display_order: number;
+  form_group: string | null;
+  validation_rules: {
+    min?: number | null;
+    max?: number | null;
+    min_length?: number | null;
+    max_length?: number | null;
+  };
+}
+
+/** گزینه فعال فیلد انتخابی. */
+export interface FieldOptionDto {
+  id: string;
+  field_id: string;
+  value: string;
+  label: string;
+  sort_order: number;
+}
+
+export function schemaListFields(): Promise<CustomFieldDef[]> {
+  return invoke<CustomFieldDef[]>("schema_list_fields");
+}
+
+export function schemaFieldOptions(fieldId: string): Promise<FieldOptionDto[]> {
+  return invoke<FieldOptionDto[]>("schema_field_options", { fieldId });
+}
+
+export function schemaSetValues(
+  tradeId: string,
+  values: Record<string, unknown>,
+): Promise<number> {
+  return invoke<number>("schema_set_values", { tradeId, values });
+}
+
+export function accountsList(): Promise<AccountDto[]> {
+  return invoke<AccountDto[]>("accounts_list");
+}
+
+export function symbolsList(): Promise<SymbolDto[]> {
+  return invoke<SymbolDto[]>("symbols_list");
+}
+
+/** ثبت پیوست و پیوند آن با معامله (لینک: before_trade/after_trade/chart/news/other). */
+export function attachmentIngest(args: {
+  tradeId: string;
+  fileName: string;
+  mimeType: string | null;
+  data: Uint8Array;
+  linkKind: string;
+}): Promise<AttachmentDto> {
+  return invoke<AttachmentDto>("attachment_ingest", {
+    tradeId: args.tradeId,
+    fileName: args.fileName,
+    mimeType: args.mimeType,
+    data: Array.from(args.data),
+    linkKind: args.linkKind,
+  });
+}
+
 export const KERNEL_READY_EVENT = "kernel://ready";

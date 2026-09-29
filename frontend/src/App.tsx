@@ -4,6 +4,7 @@ import type { PageId } from "./kernel";
 import { isTauri, kernelOpen } from "./kernel";
 import { CommandPalette } from "./components/CommandPalette";
 import { DashboardPage } from "./pages/DashboardPage";
+import { JournalPage } from "./pages/JournalPage";
 import { EmptyState } from "./components/States";
 import { useTheme } from "./theme";
 
@@ -118,7 +119,7 @@ export default function App() {
           </button>
         </header>
         {page === "dashboard" && <DashboardPage />}
-        {page === "journal" && <PageStub message={t("placeholder.journal")} />}
+        {page === "journal" && <JournalPage />}
         {page === "trades" && <PageStub message={t("placeholder.trades")} />}
         {page === "fields" && <PageStub message={t("placeholder.fields")} />}
         {page === "plugins" && <PageStub message={t("placeholder.plugins")} />}

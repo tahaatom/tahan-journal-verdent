@@ -18,7 +18,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^15.0.2",
-    "vazirmatn": "^33.0.3"
+    "vazirmatn": "^33.0.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

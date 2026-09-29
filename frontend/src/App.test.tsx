@@ -35,15 +35,16 @@ describe("App shell", () => {
     expect(document.querySelector("div[dir='rtl']")).not.toBeNull();
   });
 
-  it("navigates between pages with Persian titles and empty states", async () => {
+  it("navigates between pages with Persian titles and forms/empty states", async () => {
     const user = userEvent.setup();
     render(<App />);
     expect(screen.getByTestId("page-title")).toHaveTextContent("داشبورد");
     await user.click(screen.getByTestId("nav-journal"));
     expect(screen.getByTestId("page-title")).toHaveTextContent("ژورنال معاملات");
-    expect(screen.getByTestId("empty-state")).toHaveTextContent(
-      "ثبت معامله در فاز ۱.۱۱ اضافه می‌شود."
-    );
+    // فاز ۱.۱۱: صفحه ژورنال فرم ثبت معامله است (نه جای‌نگهدار)
+    expect(await screen.findByTestId("page-journal")).toBeInTheDocument();
+    expect(screen.getByTestId("mode-fast")).toHaveTextContent("سریع");
+    expect(screen.getByTestId("mode-full")).toHaveTextContent("کامل");
     await user.click(screen.getByTestId("nav-plugins"));
     expect(screen.getByTestId("page-title")).toHaveTextContent("سلامت پلاگین‌ها");
     await user.click(screen.getByTestId("nav-backup"));

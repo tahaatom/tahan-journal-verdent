@@ -3503,13 +3503,18 @@ dependencies = [
 name = "tahan-desktop"
 version = "0.1.0"
 dependencies = [
+ "aria-contracts",
+ "aria-domain-engine",
  "aria-query-engine",
+ "aria-schema-engine",
  "aria-storage-engine",
  "aria-ui-engine",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "uuid",
 ]
 
 [[package]]

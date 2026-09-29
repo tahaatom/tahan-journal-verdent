@@ -14,9 +14,14 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+aria-contracts = { path = "../../crates/aria-contracts" }
 aria-storage-engine = { path = "../../crates/aria-storage-engine" }
+aria-domain-engine = { path = "../../crates/aria-domain-engine" }
+aria-schema-engine = { path = "../../crates/aria-schema-engine" }
 aria-query-engine = { path = "../../crates/aria-query-engine" }
 aria-ui-engine = { path = "../../crates/aria-ui-engine" }
+rusqlite = { workspace = true }
+uuid = { workspace = true }
 
 [features]
 default = []
