@@ -21,7 +21,7 @@ pub use projection::DailySummaryRow;
 pub use service::{
     DashboardReport, PagedTrades, QueryService, StatFieldInfo, TradeListRow, MAX_PAGE_SIZE,
 };
-pub use stats::{CoreStats, Dimension, EquityPoint, GroupStat};
+pub use stats::{CoreStats, Dimension, EquityPoint, GroupStat, HeatCell};
 
 /// نسخه قرارداد پرس‌وجو.
 pub const QUERY_CONTRACT_VERSION: u32 = 1;

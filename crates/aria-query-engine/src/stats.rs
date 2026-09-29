@@ -60,6 +60,17 @@ pub struct GroupStat {
     pub avg_custom_value: Option<f64>,
 }
 
+/// یک خانه نقشه حرارتی زمان — تجمیع معاملات بسته در ساعتِ روز هفته (فاز ۱.۱۴).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HeatCell {
+    /// روز هفته (۰=یکشنبه … ۶=شنبه — خروجی strftime '%w')
+    pub weekday: i64,
+    /// ساعت روز (۰ تا ۲۳ — خروجی strftime '%H')
+    pub hour: i64,
+    pub trades: i64,
+    pub total_pnl: Option<f64>,
+}
+
 /// برچسب فارسی روز هفته؛ ورودی خروجی strftime('%w') است.
 pub fn weekday_label(w: &str) -> String {
     match w {

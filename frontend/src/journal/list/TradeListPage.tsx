@@ -20,6 +20,7 @@ import {
 import type { CustomFieldDefLike } from "../fieldTypes";
 import { buildFilterNode, emptyFilterState, type FilterState } from "./filterState";
 import type { TradeListBridge } from "./bridge";
+import { invalidateStats } from "../../queryClient";
 import { TradeFilters } from "./TradeFilters";
 import { TradeTable } from "./TradeTable";
 import { TradeDetailsPanel } from "./TradeDetailsPanel";
@@ -157,6 +158,7 @@ export function TradeListPage({ bridge: bridgeProp, refreshSignal = 0, onChanged
   const handleDeleted = useCallback(() => {
     setSelectedId(null);
     setReloadTick((n) => n + 1);
+    invalidateStats();
     onChanged?.();
   }, [onChanged]);
 

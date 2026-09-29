@@ -11,6 +11,7 @@ import {
 } from "../../kernel";
 import type { TradeListBridge } from "./bridge";
 import { displayValue, effectiveDiff } from "./effective";
+import { invalidateStats } from "../../queryClient";
 
 const inputCls =
   "rounded border border-border bg-surface px-2 py-1.5 text-sm focus:border-accent focus:outline-none";
@@ -90,6 +91,8 @@ export function TradeDetailsPanel({
       setEditNote(fresh.trade.note ?? "");
       setEditStatus(fresh.trade.status);
       setFlash(successMsg);
+      // هر جهش داده (ویرایش/حذف/بازنویسی/تخصیص/پیوند) کش آمار را باطل می‌کند
+      invalidateStats();
     } catch (e) {
       setError(errMsg(e));
     } finally {

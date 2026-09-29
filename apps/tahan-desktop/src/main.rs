@@ -186,6 +186,61 @@ fn stat_fields(state: State<'_, Mutex<KernelState>>) -> Result<Vec<StatFieldInfo
     QueryService::new(db).stat_fields().map_err(kernel_error)
 }
 
+// ===================== فاز ۱.۱۴ — داشبورد و آمار =====================
+
+/// تحلیل گره فیلتر از ورودی IPC.
+fn parse_filter(filter: serde_json::Value) -> Result<aria_query_engine::FilterNode, CmdError> {
+    serde_json::from_value(filter).map_err(|e| {
+        CmdError::new(
+            aria_query_engine::QueryError::INVALID_QUERY,
+            format!("فیلتر نامعتبر: {e}"),
+        )
+    })
+}
+
+/// منحنی سرمایه (PnL تجمعی روزانه معاملات بسته).
+#[tauri::command]
+fn stats_equity(
+    state: State<'_, Mutex<KernelState>>,
+    filter: serde_json::Value,
+) -> Result<Vec<aria_query_engine::EquityPoint>, CmdError> {
+    let st = state.lock().unwrap();
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    let node = parse_filter(filter)?;
+    QueryService::new(db)
+        .equity_curve(&node)
+        .map_err(kernel_error)
+}
+
+/// تفکیک عملکرد روی یک بُعد (نماد/استراتژی/…/فیلد سفارشی).
+#[tauri::command]
+fn stats_breakdown(
+    state: State<'_, Mutex<KernelState>>,
+    dim: serde_json::Value,
+    filter: serde_json::Value,
+) -> Result<Vec<aria_query_engine::GroupStat>, CmdError> {
+    let st = state.lock().unwrap();
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    let dim: aria_query_engine::Dimension = serde_json::from_value(dim)
+        .map_err(|e| CmdError::new(aria_query_engine::QueryError::INVALID_QUERY, format!("بُعد نامعتبر: {e}")))?;
+    let node = parse_filter(filter)?;
+    QueryService::new(db)
+        .performance_by(&dim, &node)
+        .map_err(kernel_error)
+}
+
+/// نقشه حرارتی زمان (روز هفته × ساعت بستن).
+#[tauri::command]
+fn stats_heatmap(
+    state: State<'_, Mutex<KernelState>>,
+    filter: serde_json::Value,
+) -> Result<Vec<aria_query_engine::HeatCell>, CmdError> {
+    let st = state.lock().unwrap();
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    let node = parse_filter(filter)?;
+    QueryService::new(db).heatmap(&node).map_err(kernel_error)
+}
+
 /// افزونه‌های UI اعلانی یک نقطه — فقط اسکیمای اعلانی، هرگز کد اجرایی.
 #[tauri::command]
 fn ui_extensions(
@@ -798,6 +853,9 @@ fn main() {
             core_stats,
             dashboard_summary,
             stat_fields,
+            stats_equity,
+            stats_breakdown,
+            stats_heatmap,
             ui_extensions,
             domain_execute,
             trade_details,
@@ -1219,5 +1277,56 @@ mod tests {
         .unwrap();
         assert_eq!(journal_impl::trade_details(&db, &t1).unwrap().attachments[0].link_kind, "after_trade");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stats_commands_contract_equity_breakdown_heatmap() {
+        let db = seeded();
+        let t1 = create_trade(&db);
+        {
+            let conn = db.lock();
+            conn.execute(
+                "UPDATE journal_trades SET status='closed', strategy='breakout',
+                        exit_time='2026-04-19T10:30:00Z', realized_pnl=150.0, realized_r=1.5
+                 WHERE id = ?1",
+                rusqlite::params![t1],
+            )
+            .unwrap();
+        }
+        let svc = aria_query_engine::QueryService::new(&db);
+        let node: aria_query_engine::FilterNode =
+            serde_json::from_value(serde_json::json!({"type": "all", "children": []})).unwrap();
+
+        // منحنی سرمایه: یک نقطه با PnL تجمعی ۱۵۰
+        let equity = svc.equity_curve(&node).unwrap();
+        assert_eq!(equity.len(), 1);
+        assert_eq!(equity[0].date, "2026-04-19");
+        assert!((equity[0].cumulative_pnl - 150.0).abs() < 1e-9);
+
+        // تفکیک روی بُعد استراتژی — قرارداد JSON با tag/content
+        let dim: aria_query_engine::Dimension =
+            serde_json::from_value(serde_json::json!({"dim": "strategy"})).unwrap();
+        let groups = svc.performance_by(&dim, &node).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].key, "breakout");
+        assert_eq!(groups[0].trades, 1);
+        assert!((groups[0].win_rate.unwrap() - 100.0).abs() < 1e-9);
+
+        // بُعد فیلد سفارشی از مسیر IPC
+        let dim2: aria_query_engine::Dimension =
+            serde_json::from_value(serde_json::json!({"dim": "custom_field", "field": "confidence"}))
+                .unwrap();
+        match dim2 {
+            aria_query_engine::Dimension::CustomField(k) => assert_eq!(k, "confidence"),
+            other => panic!("bad dimension: {other:?}"),
+        }
+
+        // نقشه حرارتی: یکشنبه (wd=0) ساعت ۱۰
+        let heat = svc.heatmap(&node).unwrap();
+        assert_eq!(heat.len(), 1);
+        assert_eq!(heat[0].weekday, 0);
+        assert_eq!(heat[0].hour, 10);
+        assert_eq!(heat[0].trades, 1);
+        assert!((heat[0].total_pnl.unwrap() - 150.0).abs() < 1e-9);
     }
 }

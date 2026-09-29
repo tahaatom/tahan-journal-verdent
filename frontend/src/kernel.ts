@@ -88,6 +88,71 @@ export function coreStats(): Promise<CoreStats> {
   });
 }
 
+// ===================== فاز ۱.۱۴ — داشبورد و آمار =====================
+
+/** گره فیلتر همه معاملات — ورودی پیش‌فرض دستورهای آمار. */
+export const ALL_FILTER = { type: "all", children: [] } as const;
+
+/** یک نقطه منحنی سرمایه — PnL تجمعی روزانه. */
+export interface EquityPoint {
+  date: string;
+  cumulative_pnl: number;
+}
+
+/** بُعد تفکیک عملکرد — هم‌تراز سریال‌سازی tag/content کرنل. */
+export type Dimension =
+  | { dim: "symbol" }
+  | { dim: "strategy" }
+  | { dim: "timeframe" }
+  | { dim: "session" }
+  | { dim: "weekday" }
+  | { dim: "custom_field"; field: string };
+
+/** آمار یک گروه تفکیک عملکرد. */
+export interface GroupStat {
+  key: string;
+  label: string;
+  trades: number;
+  wins: number;
+  win_rate: number | null;
+  total_pnl: number | null;
+  avg_r: number | null;
+  avg_custom_value: number | null;
+}
+
+/** یک خانه نقشه حرارتی زمان (روز هفته × ساعت بستن). */
+export interface HeatCell {
+  weekday: number;
+  hour: number;
+  trades: number;
+  total_pnl: number | null;
+}
+
+/** فیلد سفارشی دارای مجوز آمار/تحلیل. */
+export interface StatFieldInfo {
+  id: string;
+  technical_key: string;
+  display_label: string;
+  storage_type: string;
+  semantic_type: string | null;
+}
+
+export function statsEquity(filter: unknown = ALL_FILTER): Promise<EquityPoint[]> {
+  return invoke<EquityPoint[]>("stats_equity", { filter });
+}
+
+export function statsBreakdown(dim: Dimension, filter: unknown = ALL_FILTER): Promise<GroupStat[]> {
+  return invoke<GroupStat[]>("stats_breakdown", { dim, filter });
+}
+
+export function statsHeatmap(filter: unknown = ALL_FILTER): Promise<HeatCell[]> {
+  return invoke<HeatCell[]>("stats_heatmap", { filter });
+}
+
+export function statFields(): Promise<StatFieldInfo[]> {
+  return invoke<StatFieldInfo[]>("stat_fields");
+}
+
 /** افزونه‌های UI اعلانی یک نقطه — فقط اسکیمای اعلانی. */
 export function uiExtensions(kind: string): Promise<unknown[]> {
   return invoke<unknown[]>("ui_extensions", { kind });

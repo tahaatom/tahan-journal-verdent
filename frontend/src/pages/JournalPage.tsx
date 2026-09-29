@@ -11,6 +11,7 @@ import {
   accountsList,
   symbolsList,
 } from "../kernel";
+import { invalidateStats } from "../queryClient";
 import type { TradeFormBridge } from "../journal/types";
 import { TradeForm } from "../journal/TradeForm";
 import { TradeListPage } from "../journal/list/TradeListPage";
@@ -48,6 +49,8 @@ export function JournalPage() {
   const onSaved = useCallback(() => {
     setSavedTick((n) => n + 1);
     setTab("list");
+    // کش آمار داشبورد باطل می‌شود تا ویجت‌ها داده تازه بخوانند (فاز ۱.۱۴)
+    invalidateStats();
   }, []);
 
   const tabBtn = (active: boolean) =>

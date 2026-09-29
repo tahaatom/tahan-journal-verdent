@@ -1,1 +1,29 @@
 import "@testing-library/jest-dom/vitest";
+import { vi } from "vitest";
+
+// jsdom پیاده‌سازی canvas ندارد؛ zrender (موتور ECharts) برای اندازه‌گیری
+// متن به آن نیاز دارد. کاذب ساده، اجرای نمودار در آزمون را بی‌صدا ممکن می‌کند.
+if (typeof HTMLCanvasElement !== "undefined") {
+  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+    measureText: () => ({ width: 0 }),
+    font: "",
+    save: () => undefined,
+    restore: () => undefined,
+    translate: () => undefined,
+    clearRect: () => undefined,
+    rect: () => undefined,
+    clip: () => undefined,
+    beginPath: () => undefined,
+    closePath: () => undefined,
+    moveTo: () => undefined,
+    lineTo: () => undefined,
+    stroke: () => undefined,
+    fill: () => undefined,
+    fillText: () => undefined,
+    strokeText: () => undefined,
+    arc: () => undefined,
+    setLineDash: () => undefined,
+    createLinearGradient: () => ({ addColorStop: () => undefined }),
+    createRadialGradient: () => ({ addColorStop: () => undefined }),
+  })) as unknown as HTMLCanvasElement["getContext"];
+}

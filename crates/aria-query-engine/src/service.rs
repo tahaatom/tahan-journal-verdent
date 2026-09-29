@@ -3,7 +3,9 @@
 use crate::error::QueryError;
 use crate::filter::{build_filter, lookup_field, FilterNode, SqlFilter};
 use crate::projection::{self, DailySummaryRow};
-use crate::stats::{fold_equity, weekday_label, CoreStats, Dimension, EquityPoint, GroupStat};
+use crate::stats::{
+    fold_equity, weekday_label, CoreStats, Dimension, EquityPoint, GroupStat, HeatCell,
+};
 use aria_storage_engine::Database;
 use aria_contracts::EventEnvelope;
 use aria_schema_engine::model::StorageType;
@@ -301,6 +303,46 @@ pub fn list_trades(
             let filter = prepared_filter(&conn, node)?;
             let daily = self.daily_pnl(&conn, &filter)?;
             Ok(fold_equity(&daily).0)
+        })
+    }
+
+    /// نقشه حرارتی زمان — تجمیع معاملات بسته روی ماتریس روز هفته × ساعت
+    /// بستن (فاز ۱.۱۴). فقط معاملات با PnL قطعی‌شده.
+    pub fn heatmap(&self, node: &FilterNode) -> Result<Vec<HeatCell>, QueryError> {
+        let conn = self.db.lock();
+        with_row_budget(&conn, DEFAULT_ROW_BUDGET, || {
+            let filter = prepared_filter(&conn, node)?;
+            let where_extra = if filter.where_clause.is_empty() {
+                " WHERE journal_trades.deleted_at IS NULL AND realized_pnl IS NOT NULL".to_string()
+            } else {
+                format!(
+                    "{} AND journal_trades.deleted_at IS NULL AND realized_pnl IS NOT NULL",
+                    filter.where_clause
+                )
+            };
+            let sql = format!(
+                "SELECT CAST(strftime('%w', ts) AS INTEGER) AS wd,
+                        CAST(strftime('%H', ts) AS INTEGER) AS hr,
+                        COUNT(*),
+                        SUM(realized_pnl)
+                 FROM (
+                     SELECT COALESCE(exit_time, entry_time, created_at) AS ts, realized_pnl
+                     FROM journal_trades{where_extra}
+                 )
+                 GROUP BY wd, hr ORDER BY wd, hr"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let mut rows = stmt.query(rusqlite::params_from_iter(filter.params.clone()))?;
+            let mut out = Vec::new();
+            while let Some(r) = rows.next()? {
+                out.push(HeatCell {
+                    weekday: r.get(0)?,
+                    hour: r.get(1)?,
+                    trades: r.get(2)?,
+                    total_pnl: r.get(3)?,
+                });
+            }
+            Ok(out)
         })
     }
 
@@ -1081,6 +1123,57 @@ mod tests {
     }
 
     // ---------- تجمیع ----------
+
+    // ---------- نقشه حرارتی ----------
+
+    #[test]
+    fn heatmap_groups_by_close_weekday_and_hour() {
+        let db = db();
+        {
+            let conn = db.lock();
+            // بسته: یکشنبه ۲۰ آوریل ۲۰۲۶ ساعت ۱۰ و ۱۱ UTC + دوشنبه ساعت ۱۰
+            seed_trade(&conn, "h1", "acc1", "S", "closed", "2026-04-19T08:00:00Z", Some("2026-04-19T10:30:00Z"), Some(100.0), Some(1.0), None);
+            seed_trade(&conn, "h2", "acc1", "S", "closed", "2026-04-19T09:00:00Z", Some("2026-04-19T11:15:00Z"), Some(50.0), Some(0.5), None);
+            seed_trade(&conn, "h3", "acc1", "S", "closed", "2026-04-20T08:00:00Z", Some("2026-04-20T10:45:00Z"), Some(-25.0), Some(-0.25), None);
+            // باز بدون PnL — نباید در نقشه حرارتی بیاید (هم‌تراز daily_pnl)
+            seed_trade(&conn, "h4", "acc1", "S", "open", "2026-04-21T08:00:00Z", None, None, None, None);
+        }
+        let svc = QueryService::new(&db);
+        let cells = svc.heatmap(&FilterNode::All { children: vec![] }).unwrap();
+        assert_eq!(cells.len(), 3, "open trades and empty buckets are excluded");
+        // 2026-04-19 یکشنبه است (wd=0)، ساعت ۱۰ و ۱۱
+        let sun10 = cells.iter().find(|c| c.weekday == 0 && c.hour == 10).unwrap();
+        assert_eq!(sun10.trades, 1);
+        assert!((sun10.total_pnl.unwrap() - 100.0).abs() < 1e-9);
+        let sun11 = cells.iter().find(|c| c.weekday == 0 && c.hour == 11).unwrap();
+        assert_eq!(sun11.trades, 1);
+        // 2026-04-20 دوشنبه (wd=1) ساعت ۱۰
+        let mon10 = cells.iter().find(|c| c.weekday == 1 && c.hour == 10).unwrap();
+        assert!((mon10.total_pnl.unwrap() - (-25.0)).abs() < 1e-9);
+        // مرتب‌سازی صعودی
+        let mut sorted = cells.clone();
+        sorted.sort_by_key(|c| (c.weekday, c.hour));
+        assert_eq!(cells, sorted);
+    }
+
+    #[test]
+    fn heatmap_respects_filter() {
+        let db = db();
+        {
+            let conn = db.lock();
+            seed_trade(&conn, "k1", "acc1", "S", "closed", "2026-04-19T08:00:00Z", Some("2026-04-19T10:30:00Z"), Some(100.0), Some(1.0), Some("breakout"));
+            seed_trade(&conn, "k2", "acc1", "S", "closed", "2026-04-19T09:00:00Z", Some("2026-04-19T11:15:00Z"), Some(50.0), Some(0.5), Some("reversal"));
+        }
+        let svc = QueryService::new(&db);
+        let cells = svc
+            .heatmap(&FilterNode::Simple(Box::new(TradeFilter {
+                strategy: Some("breakout".into()),
+                ..Default::default()
+            })))
+            .unwrap();
+        assert_eq!(cells.len(), 1);
+        assert_eq!(cells[0].trades, 1);
+    }
 
     #[test]
     fn aggregate_correctness_with_drawdown() {
