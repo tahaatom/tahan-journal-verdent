@@ -116,6 +116,7 @@ fn kernel_open(
     st.db = Some(db);
     st.opened = true;
     journal_impl::seed_defaults(st.db.as_ref().unwrap())?;
+    journal_impl::ensure_official_plugins(st.db.as_ref().unwrap())?;
     drop(st);
     let _ = app.emit("kernel://ready", true);
     Ok(KernelStatus {
@@ -414,6 +415,101 @@ mod journal_impl {
                 })
             })
             .collect()
+    }
+
+    // ==================== ایمپورت متاتریدر (فاز ۱.۱۵) ====================
+
+    /// نسخه API کرنل برای سازگاری مانیفست پلاگین‌ها.
+    pub const KERNEL_API_VERSION: &str = "1.0.0";
+
+    /// شناسه پلاگین رسمی ایمپورت متاتریدر.
+    pub const MT_IMPORT_PLUGIN_ID: &str = "mt.import";
+
+    /// مانیفست پلاگین رسمی — فایل منبع حقیقت در plugins/official/mt-import.
+    pub const OFFICIAL_MT_IMPORT_MANIFEST: &str = include_str!(
+        "../../../plugins/official/mt-import/manifest.json"
+    );
+
+    /// نصب و فعال‌سازی خودکار پلاگین‌های رسمی — idempotent.
+    /// جریان قراردادی موتور پلاگین: install → enable → start
+    /// (enforce فقط وضعیت enabled/running را می‌پذیرد).
+    pub fn ensure_official_plugins(db: &Database) -> PlugResult<()> {
+        let svc = aria_plugin_engine::PluginService::new(
+            db,
+            env!("CARGO_PKG_VERSION"),
+            KERNEL_API_VERSION,
+        )
+        .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+
+        let status: Option<String> = {
+            let conn = db.lock();
+            conn.query_row(
+                "SELECT status FROM plugins WHERE id = ?1",
+                [MT_IMPORT_PLUGIN_ID],
+                |r| r.get(0),
+            )
+            .ok()
+        };
+        match status.as_deref() {
+            None => {
+                svc.install(OFFICIAL_MT_IMPORT_MANIFEST)
+                    .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+                svc.enable(MT_IMPORT_PLUGIN_ID)
+                    .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+            }
+            Some("installed") | Some("disabled") => {
+                svc.enable(MT_IMPORT_PLUGIN_ID)
+                    .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+            }
+            _ => {}
+        }
+        // پس از enable، راه‌اندازی تا enforce بگذرد
+        let status: String = {
+            let conn = db.lock();
+            conn.query_row(
+                "SELECT status FROM plugins WHERE id = ?1",
+                [MT_IMPORT_PLUGIN_ID],
+                |r| r.get(0),
+            )
+            .map_err(|e| CmdError::new(0, format!("خطای خواندن وضعیت پلاگین: {e}")))?
+        };
+        if status == "enabled" {
+            svc.start(MT_IMPORT_PLUGIN_ID)
+                .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// ایمپورت فایل متاتریدر با enforce مجوز mt.import پلاگین رسمی.
+    /// برچسب منبع از قالب تشخیص‌داده‌شده فایل ساخته می‌شود.
+    pub fn import_metatrader(
+        db: &Database,
+        file_name: &str,
+        data: &[u8],
+        account_id: &str,
+    ) -> PlugResult<aria_import_engine::ImportReport> {
+        // مجوز — پلاگین رسمی باید نصب و فعال باشد
+        let plugins = aria_plugin_engine::PluginService::new(
+            db,
+            env!("CARGO_PKG_VERSION"),
+            KERNEL_API_VERSION,
+        )
+        .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+        plugins
+            .enforce(MT_IMPORT_PLUGIN_ID, aria_plugin_engine::Capability::MtImport)
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+
+        // برچسب منبع بر اساس قالب تشخیص‌داده‌شده
+        let decoded = aria_import_engine::decode(data)
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+        let source = match aria_import_engine::detect_format(file_name, &decoded.text) {
+            aria_import_engine::SourceFormat::HtmlStatement => "mt4-statement",
+            aria_import_engine::SourceFormat::CsvDeals => "mt5-deals",
+        };
+
+        aria_import_engine::ImportService::new(db)
+            .import(data, file_name, account_id, source)
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))
     }
 
     /// فیلدهای سفارشی فعال برای رندر داینامیک فرم.
@@ -842,6 +938,20 @@ fn attachment_data(
     journal_impl::attachment_data(db, &dir, &attachment_id, thumbnail)
 }
 
+/// ایمپورت فایل خروجی متاتریدر از طریق پلاگین رسمی mt.import — فاز ۱.۱۵.
+/// مجوز mt.import در پل enforce می‌شود و گزارش فارسی برمی‌گردد.
+#[tauri::command]
+fn mt_import(
+    state: State<'_, Mutex<KernelState>>,
+    file_name: String,
+    data: Vec<u8>,
+    account_id: String,
+) -> Result<aria_import_engine::ImportReport, CmdError> {
+    let st = state.lock().unwrap();
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    journal_impl::import_metatrader(db, &file_name, &data, &account_id)
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Mutex::new(KernelState::default()))
@@ -865,7 +975,8 @@ fn main() {
             accounts_list,
             symbols_list,
             attachment_ingest,
-            attachment_data
+            attachment_data,
+            mt_import
         ])
         .setup(|app| {
             // در محیط توسعه مسیر داده تضمین می‌شود (برای فازهای بکاپ/تنظیمات)
@@ -1328,5 +1439,107 @@ mod tests {
         assert_eq!(heat[0].hour, 10);
         assert_eq!(heat[0].trades, 1);
         assert!((heat[0].total_pnl.unwrap() - 150.0).abs() < 1e-9);
+    }
+
+    // ==================== ایمپورت متاتریدر (فاز ۱.۱۵) ====================
+
+    const MT5_CSV: &str = "Time,Position,Type,Direction,Volume,Price,Order,Commission,Swap,Profit,Symbol,Comment\n\
+        2024.01.15 10:30:00,123456,buy,in,0.10,2035.50,789,0.00,0.00,0.00,XAUUSD,\n\
+        2024.01.15 12:00:00,123456,sell,out,0.10,2040.00,790,-0.50,0.20,45.00,XAUUSD,take profit\n";
+
+    #[test]
+    fn ensure_official_plugins_installs_enables_and_is_idempotent() {
+        let db = seeded();
+        journal_impl::ensure_official_plugins(&db).unwrap();
+        journal_impl::ensure_official_plugins(&db).unwrap();
+        let conn = db.lock();
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM plugins WHERE id = 'mt.import'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "running");
+    }
+
+    #[test]
+    fn mt_import_requires_installed_plugin() {
+        let db = seeded();
+        // بدون ensure — پلاگین نصب نیست → enforce رد می‌شود
+        let err = journal_impl::import_metatrader(&db, "deals.csv", MT5_CSV.as_bytes(), "acc-default")
+            .unwrap_err();
+        assert!((1500..1600).contains(&err.code), "plugin error code, got {}", err.code);
+    }
+
+    #[test]
+    fn mt_import_full_flow_creates_trades_and_executions() {
+        let db = seeded();
+        journal_impl::ensure_official_plugins(&db).unwrap();
+        let report = journal_impl::import_metatrader(
+            &db,
+            "deals.csv",
+            MT5_CSV.as_bytes(),
+            "acc-default",
+        )
+        .unwrap();
+        assert_eq!(report.imported, 2);
+        assert_eq!(report.trades_created, 1);
+        assert_eq!(report.needs_assignment, 0);
+        assert_eq!(report.file_hash.len(), 64, "blake3 hex hash");
+        assert_eq!(report.batch_id.len(), 36, "batch id is a uuid");
+
+        let conn = db.lock();
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM journal_trades", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT count(*) FROM executions WHERE kind='imported' AND ticket IS NOT NULL",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            2
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT count(*) FROM audit_logs WHERE action='import.mt'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1
+        );
+        // ابطال کش داشبورد برای نوسازی آمار پس از ایمپورت
+        assert_eq!(
+            conn.query_row(
+                "SELECT count(*) FROM system_events WHERE event_type='domain.stats_invalidated'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn mt_import_duplicate_file_yields_no_new_trades() {
+        let db = seeded();
+        journal_impl::ensure_official_plugins(&db).unwrap();
+        journal_impl::import_metatrader(&db, "deals.csv", MT5_CSV.as_bytes(), "acc-default")
+            .unwrap();
+        let report = journal_impl::import_metatrader(
+            &db,
+            "deals.csv",
+            MT5_CSV.as_bytes(),
+            "acc-default",
+        )
+        .unwrap();
+        assert!(report.file_duplicate);
+        assert_eq!(report.imported, 0);
+        assert_eq!(report.duplicates, 2);
     }
 }

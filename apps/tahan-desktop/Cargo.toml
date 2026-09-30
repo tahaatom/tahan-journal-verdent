@@ -20,6 +20,8 @@ aria-domain-engine = { path = "../../crates/aria-domain-engine" }
 aria-schema-engine = { path = "../../crates/aria-schema-engine" }
 aria-query-engine = { path = "../../crates/aria-query-engine" }
 aria-ui-engine = { path = "../../crates/aria-ui-engine" }
+aria-plugin-engine = { path = "../../crates/aria-plugin-engine" }
+aria-import-engine = { path = "../../crates/aria-import-engine" }
 rusqlite = { workspace = true }
 uuid = { workspace = true }
 base64 = "0.22"

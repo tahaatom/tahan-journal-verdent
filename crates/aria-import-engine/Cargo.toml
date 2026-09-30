@@ -1,0 +1,25 @@
+[package]
+name = "aria-import-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "موتور ایمپورت — پلاگین رسمی متاتریدر (CSV/HTML)"
+
+[dependencies]
+aria-storage-engine = { path = "../aria-storage-engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rusqlite = { workspace = true }
+blake3 = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+csv = { workspace = true }
+encoding_rs = { workspace = true }
+scraper = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

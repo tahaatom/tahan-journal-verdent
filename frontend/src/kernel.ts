@@ -305,6 +305,54 @@ export function attachmentData(attachmentId: string, thumbnail: boolean): Promis
   });
 }
 
+// ===================== فاز ۱.۱۵ — ایمپورت متاتریدر =====================
+
+/** گزارش ایمپورت — مطابق `ImportReport` موتور ایمپورت سمت کرنل. */
+export interface ImportReport {
+  /** شناسه دسته ایمپورت (UUID) */
+  batch_id: string;
+  /** هش blake3 کل فایل (hex) */
+  file_hash: string;
+  /** ردیف‌های شناسایی‌شده در فایل */
+  total_rows: number;
+  /** ردیف‌های غیرمعاملاتی رد‌شده (موجودی/اعتبار) */
+  skipped: number;
+  /** اجراهای درج‌شده */
+  imported: number;
+  /** ردیف‌های تکراری */
+  duplicates: number;
+  /** ردیف‌های ناموفق */
+  errors: number;
+  /** اجراهای در انتظار تخصیص کاربر */
+  needs_assignment: number;
+  /** معاملات جدید ساخته‌شده */
+  trades_created: number;
+  /** آیا کل فایل قبلاً ایمپورت شده بود؟ */
+  file_duplicate: boolean;
+  /** هشدارهای تفصیلی فارسی */
+  warnings: string[];
+}
+
+/** ایمپورت فایل متاتریدر از طریق پلاگین رسمی mt.import (مجوز mt.import سمت کرنل enforce می‌شود). */
+export function mtImport(args: {
+  fileName: string;
+  data: Uint8Array;
+  accountId: string;
+}): Promise<ImportReport> {
+  return invoke<ImportReport>("mt_import", {
+    fileName: args.fileName,
+    data: Array.from(args.data),
+    accountId: args.accountId,
+  });
+}
+
+/** حداکثر حجم فایل ایمپورت — هم‌تراز سمت کرنل (۲۰ مگابایت). */
+export const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
+
+/** پسوندهای مجاز ایمپورت متاتریدر. */
+export const ALLOWED_IMPORT_EXTENSIONS = ["csv", "tsv", "html", "htm"] as const;
+
+
 // ===================== فاز ۱.۱۲ — فهرست و جزئیات =====================
 
 /** سطر خلاصه فهرست معاملات — مطابق `TradeListRow` سمت کرنل. */

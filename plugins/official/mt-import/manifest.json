@@ -1,0 +1,15 @@
+{
+  "id": "mt.import",
+  "name": "ایمپورت متاتریدر",
+  "version": "1.0.0",
+  "api_version": "1.0.0",
+  "entrypoint": "builtin",
+  "runtime_mode": "out_of_process",
+  "kernel_version_range": ">=0.1.0, <2.0.0",
+  "api_version_range": "^1.0.0",
+  "capabilities": ["mt.import"],
+  "trust_level": "official",
+  "description": "پلاگین رسمی ایمپورت فایل‌های CSV/HTML متاتریدر (MT5 Deals و MT4 Statement) به ژورنال طهان",
+  "author": "ژورنال طهان",
+  "license": "MIT"
+}

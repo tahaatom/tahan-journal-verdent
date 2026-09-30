@@ -1,4 +1,5 @@
-//! صفحه ژورنال — تب فهرست معاملات (فاز ۱.۱۲) و فرم ثبت معامله (فاز ۱.۱۱).
+//! صفحه ژورنال — تب فهرست معاملات (فاز ۱.۱۲)، فرم ثبت معامله (فاز ۱.۱۱)
+//! و پنل ایمپورت متاتریدر (فاز ۱.۱۵).
 
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,6 +16,8 @@ import { invalidateStats } from "../queryClient";
 import type { TradeFormBridge } from "../journal/types";
 import { TradeForm } from "../journal/TradeForm";
 import { TradeListPage } from "../journal/list/TradeListPage";
+import { MtImportPanel } from "../journal/import/MtImportPanel";
+import { useKernelImportBridge, type MtImportBridge } from "../journal/import/bridge";
 
 /** پیاده‌سازی پل فرم روی دستورات IPC کرنل. */
 function useKernelBridge(): TradeFormBridge {
@@ -36,20 +39,27 @@ function useKernelBridge(): TradeFormBridge {
   );
 }
 
-type JournalTab = "list" | "register";
+type JournalTab = "list" | "register" | "import";
 
-/** صفحه ژورنال — فهرست/جزئیات معاملات و ثبت معامله جدید. */
+/** صفحه ژورنال — فهرست/جزئیات معاملات، ثبت معامله جدید و ایمپورت متاتریدر. */
 export function JournalPage() {
   const { t } = useTranslation();
   const bridge = useKernelBridge();
+  const importBridge: MtImportBridge = useKernelImportBridge();
   const [tab, setTab] = useState<JournalTab>("list");
-  /** پس از هر ثبت، فهرست دوباره خوانده می‌شود. */
+  /** پس از هر ثبت/ایمپورت، فهرست دوباره خوانده می‌شود. */
   const [savedTick, setSavedTick] = useState(0);
 
   const onSaved = useCallback(() => {
     setSavedTick((n) => n + 1);
     setTab("list");
     // کش آمار داشبورد باطل می‌شود تا ویجت‌ها داده تازه بخوانند (فاز ۱.۱۴)
+    invalidateStats();
+  }, []);
+
+  /** پس از ایمپورت موفق — فهرست نوسازی می‌شود؛ کاربر در تب گزارش می‌ماند. */
+  const onImported = useCallback(() => {
+    setSavedTick((n) => n + 1);
     invalidateStats();
   }, []);
 
@@ -81,15 +91,27 @@ export function JournalPage() {
         >
           {t("list.tabRegister")}
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "import"}
+          data-testid="journal-tab-import"
+          onClick={() => setTab("import")}
+          className={tabBtn(tab === "import")}
+        >
+          {t("list.tabImport")}
+        </button>
       </div>
 
       {tab === "list" ? (
         <TradeListPage refreshSignal={savedTick} />
-      ) : (
+      ) : tab === "register" ? (
         <>
           <p className="text-xs text-text-muted">{t("journal.hint")}</p>
           <TradeForm bridge={bridge} onSaved={onSaved} />
         </>
+      ) : (
+        <MtImportPanel bridge={importBridge} onImported={onImported} />
       )}
     </div>
   );

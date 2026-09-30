@@ -27,6 +27,12 @@ const keys = [
   "journal.plannedR","journal.initialStopLoss","journal.takeProfit","journal.note","journal.volume",
   "journal.stopLoss","journal.strategy","journal.timeframe","journal.session","journal.tags",
   "journal.emotions","journal.mistakes","journal.hint",
+  "list.tabImport",
+  "mtImport.title","mtImport.hint","mtImport.account","mtImport.file",
+  "mtImport.noFile","mtImport.submit","mtImport.importing","mtImport.reportTitle",
+  "mtImport.totalRows","mtImport.skipped","mtImport.imported","mtImport.duplicates","mtImport.errors",
+  "mtImport.needsAssignment","mtImport.tradesCreated","mtImport.fileDuplicate","mtImport.warnings",
+  "mtImport.done","mtImport.error","mtImport.tooBig","mtImport.typeNotAllowed","mtImport.noData",
 ];
 
 it("every key used by list components resolves to Persian (not the key itself)", () => {
