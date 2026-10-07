@@ -352,6 +352,132 @@ export const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
 /** پسوندهای مجاز ایمپورت متاتریدر. */
 export const ALLOWED_IMPORT_EXTENSIONS = ["csv", "tsv", "html", "htm"] as const;
 
+// ===================== فاز ۱.۱۶ — بکاپ و بازیابی =====================
+
+/** گزارش ساخت بکاپ — مطابق `BackupReport` موتور بکاپ سمت کرنل. */
+export interface BackupReport {
+  /** مسیر فایل بسته ساخته‌شده */
+  out_path: string;
+  /** اندازه نهایی فایل روی دیسک */
+  size_bytes: number;
+  /** اندازه بار خام (پیش از فشرده‌سازی/رمزنگاری) */
+  raw_bytes: number;
+  /** اندازه پس از فشرده‌سازی و رمزنگاری */
+  payload_bytes: number;
+  /** تعداد فایل‌های بسته‌شده */
+  entries: number;
+  /** تعداد پیوست‌ها */
+  attachments_count: number;
+  /** اندازه snapshot پایگاه‌داده */
+  database_bytes: number;
+  /** آیا snapshot تنظیمات گنجانده شد؟ */
+  includes_settings: boolean;
+  /** هش blake3 بار خام */
+  raw_blake3: string;
+  /** هش صحت بار رمزنگاری‌شده */
+  integrity_hash: string;
+  /** زمان ساخت (RFC3339 UTC) */
+  created_at: string;
+  /** نسخه فرمت */
+  format_version: number;
+  /** مدت اجرا (میلی‌ثانیه) */
+  duration_ms: number;
+}
+
+/** فراداده بسته بکاپ — بدون داده حساس (مانیفست بازرسی‌پذیر). */
+export interface BackupManifestInfo {
+  format_version: number;
+  created_at: string;
+  app_version: string;
+  schema_version: number;
+  cipher: string;
+  kdf: {
+    algorithm: string;
+    salt_hex: string;
+    m_cost_kib: number;
+    t_cost: number;
+    p_cost: number;
+    key_len: number;
+  };
+  zstd_level: number;
+  raw_bytes: number;
+  raw_blake3: string;
+  attachments_count: number;
+  includes_settings: boolean;
+  entries: { path: string; size: number; blake3: string }[];
+  encryption_summary: string;
+}
+
+/** گزارش بازیابی — مطابق `RestoreReport` موتور بکاپ. */
+export interface RestoreReport {
+  source_path: string;
+  entries_restored: number;
+  attachments_restored: number;
+  database_bytes: number;
+  schema_version: number;
+  created_at: string;
+  /** مسیر نسخه امنیتی وضعیت پیشین (اگر وجود داشت) */
+  safety_copy: string | null;
+  integrity_hash: string;
+  duration_ms: number;
+}
+
+/** ساخت بکاپ رمزنگاری‌شده — سیاست گذرواژه سمت کرنل اعمال می‌شود. */
+export function backupCreate(args: {
+  password: string;
+  includeSettings: boolean;
+  outPath?: string;
+}): Promise<BackupReport> {
+  return invoke<BackupReport>("backup_create", {
+    password: args.password,
+    includeSettings: args.includeSettings,
+    outPath: args.outPath ?? null,
+  });
+}
+
+/** بازیابی بسته — با مسیر یا بایت‌های فایل انتخاب‌شده. */
+export function backupRestore(args: {
+  packagePath?: string;
+  fileName?: string;
+  data?: Uint8Array;
+  password: string;
+}): Promise<RestoreReport> {
+  return invoke<RestoreReport>("backup_restore", {
+    packagePath: args.packagePath ?? null,
+    fileName: args.fileName ?? null,
+    data: args.data ? Array.from(args.data) : null,
+    password: args.password,
+  });
+}
+
+/** فراداده بسته بدون گذرواژه — برای نمایش پیش از بازیابی. */
+export function backupInspect(args: {
+  packagePath?: string;
+  fileName?: string;
+  data?: Uint8Array;
+}): Promise<BackupManifestInfo> {
+  return invoke<BackupManifestInfo>("backup_inspect", {
+    packagePath: args.packagePath ?? null,
+    fileName: args.fileName ?? null,
+    data: args.data ? Array.from(args.data) : null,
+  });
+}
+
+/** تأیید کامل صحت بسته (رمزگشایی + چک‌سام‌ها) بدون تغییر دیسک. */
+export function backupVerify(args: {
+  packagePath?: string;
+  fileName?: string;
+  data?: Uint8Array;
+  password: string;
+}): Promise<BackupManifestInfo> {
+  return invoke<BackupManifestInfo>("backup_verify", {
+    packagePath: args.packagePath ?? null,
+    fileName: args.fileName ?? null,
+    data: args.data ? Array.from(args.data) : null,
+    password: args.password,
+  });
+}
+
 
 // ===================== فاز ۱.۱۲ — فهرست و جزئیات =====================
 

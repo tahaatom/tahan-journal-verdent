@@ -1,0 +1,21 @@
+[package]
+name = "aria-backup-engine"
+version = "0.1.0"
+edition = "2021"
+description = "موتور بکاپ و بازیابی رمزنگاری‌شده ژورنال طهان"
+license = "MIT"
+
+[dependencies]
+aria-contracts = { path = "../aria-contracts" }
+aria-storage-engine = { path = "../aria-storage-engine" }
+aria-security-engine = { path = "../aria-security-engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+blake3 = { workspace = true }
+zstd = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
+tracing = { workspace = true }
+tempfile = { workspace = true }

@@ -25,6 +25,8 @@ struct KernelState {
     ui_registry: UiExtensionRegistry,
     /// آیا هسته باز شده است؟
     opened: bool,
+    /// حالت هسته: closed | memory | file
+    mode: &'static str,
 }
 
 /// اطلاعات کلی برنامه برای فرانت‌اند.
@@ -88,7 +90,7 @@ fn kernel_status(state: State<'_, Mutex<KernelState>>) -> KernelStatus {
     let st = state.lock().unwrap();
     KernelStatus {
         opened: st.opened,
-        mode: if st.opened { "memory" } else { "closed" },
+        mode: st.mode,
     }
 }
 
@@ -115,6 +117,7 @@ fn kernel_open(
     }
     st.db = Some(db);
     st.opened = true;
+    st.mode = "memory";
     journal_impl::seed_defaults(st.db.as_ref().unwrap())?;
     journal_impl::ensure_official_plugins(st.db.as_ref().unwrap())?;
     drop(st);
@@ -952,6 +955,231 @@ fn mt_import(
     journal_impl::import_metatrader(db, &file_name, &data, &account_id)
 }
 
+// ===================== فاز ۱.۱۶ — بکاپ و بازیابی رمزنگاری‌شده =====================
+//
+// منطق دستورات در `backup_impl` بدون وابستگی به Tauri پیاده شده تا بدون
+// پوسته هم آزمون‌پذیر باشد. میزکار کاری پوشه داده برنامه است و پس از
+// بازیابی موفق، پایگاه‌داده بازگردانده‌شده در کرنل بارگذاری مجدد می‌شود.
+
+/// منطق بکاپ/بازیابی — مستقل از پوسته.
+mod backup_impl {
+    use super::*;
+    use super::journal_impl::PlugResult;
+    use aria_backup_engine::{BackupManifest, BackupReport, RestoreReport, Workspace};
+
+    /// میزکار کاری روی ریشه داده برنامه.
+    pub fn workspace(root: &std::path::Path) -> Workspace {
+        Workspace::new(root)
+    }
+
+    /// مسیر پیش‌فرض بسته بکاپ — پوشه backups با مُهر زمانی.
+    pub fn default_backup_path(root: &std::path::Path) -> std::path::PathBuf {
+        let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+        let dir = root.join("backups");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join(format!("tahan-{stamp}.tahanbak"))
+    }
+
+    /// ساخت بکاپ رمزنگاری‌شده — با اعمال سیاست گذرواژه در موتور.
+    pub fn create(
+        db: &Database,
+        root: &std::path::Path,
+        password: &str,
+        include_settings: bool,
+        out_path: Option<String>,
+    ) -> PlugResult<BackupReport> {
+        let out = match out_path {
+            Some(p) if !p.trim().is_empty() => std::path::PathBuf::from(p),
+            _ => default_backup_path(root),
+        };
+        aria_backup_engine::create_backup(db, &workspace(root), &out, password, include_settings)
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))
+    }
+
+    /// بازیابی بسته روی میزکار — پس از موفقیت، مسیر پایگاه‌داده بازگردانده می‌شود
+    /// تا کرنل آن را بارگذاری کند.
+    pub fn restore(
+        package_path: &str,
+        root: &std::path::Path,
+        password: &str,
+    ) -> PlugResult<RestoreReport> {
+        let package = std::path::PathBuf::from(package_path);
+        if !package.is_file() {
+            return Err(CmdError::new(1600, "فایل بسته بکاپ یافت نشد"));
+        }
+        let report = aria_backup_engine::restore_backup(&package, &workspace(root), password)
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))?;
+        // نگه‌داشتن حداکثر ۵ نسخه امنیتی — پاک‌سازی خودکار پس از بازیابی موفق
+        if let Ok(_removed) = aria_backup_engine::prune_safety_copies(&workspace(root), 5) {
+            tracing::info!("نسخه‌های امنیتی قدیمی پاک شدند");
+        }
+        Ok(report)
+    }
+
+    /// خواندن فراداده بسته بدون گذرواژه.
+    pub fn inspect(package_path: &str) -> PlugResult<BackupManifest> {
+        let package = std::path::PathBuf::from(package_path);
+        if !package.is_file() {
+            return Err(CmdError::new(1600, "فایل بسته بکاپ یافت نشد"));
+        }
+        aria_backup_engine::inspect_package(&package)
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))
+    }
+
+    /// تأیید کامل صحت بسته (رمزگشایی + چک‌سام‌ها) بدون تغییر دیسک.
+    pub fn verify(package_path: &str, password: &str) -> PlugResult<BackupManifest> {
+        let package = std::path::PathBuf::from(package_path);
+        if !package.is_file() {
+            return Err(CmdError::new(1600, "فایل بسته بکاپ یافت نشد"));
+        }
+        aria_backup_engine::verify_package(&package, password)
+            .map_err(|e| CmdError::new(e.code(), e.to_string()))
+    }
+
+    /// محل بسته: مسیر مستقیم یا نوشتن بایت‌های دریافتی در پوشه restore-inbox
+    /// (چون WebView به مسیر فایل محلی دسترسی ندارد).
+    pub fn resolve_source(
+        root: &std::path::Path,
+        package_path: Option<&str>,
+        file_name: Option<&str>,
+        data: Option<&[u8]>,
+    ) -> PlugResult<std::path::PathBuf> {
+        if let Some(p) = package_path {
+            if !p.trim().is_empty() {
+                let package = std::path::PathBuf::from(p);
+                if !package.is_file() {
+                    return Err(CmdError::new(1600, "فایل بسته بکاپ یافت نشد"));
+                }
+                return Ok(package);
+            }
+        }
+        let bytes = data.ok_or_else(|| {
+            CmdError::new(1600, "مسیر یا محتوای بسته بکاپ داده نشده است")
+        })?;
+        if bytes.is_empty() {
+            return Err(CmdError::new(1600, "محتوای فایل بسته خالی است"));
+        }
+        // نام امن — فقط نام پایه، بدون مسیر
+        let safe = std::path::Path::new(file_name.unwrap_or("package.tahanbak"))
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("package.tahanbak")
+            .to_string();
+        let inbox = root.join("restore-inbox");
+        std::fs::create_dir_all(&inbox)
+            .map_err(|e| CmdError::new(1605, format!("خطای ساخت پوشه بازیابی: {e}")))?;
+        let path = inbox.join(format!("{}-{safe}", uuid::Uuid::new_v4()));
+        std::fs::write(&path, bytes)
+            .map_err(|e| CmdError::new(1605, format!("خطای ذخیره بسته دریافتی: {e}")))?;
+        Ok(path)
+    }
+}
+
+#[tauri::command]
+fn backup_create(
+    app: AppHandle,
+    state: State<'_, Mutex<KernelState>>,
+    password: String,
+    include_settings: bool,
+    out_path: Option<String>,
+) -> Result<aria_backup_engine::BackupReport, CmdError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CmdError::new(0, format!("خطای مسیر داده: {e}")))?;
+    let st = state.lock().unwrap();
+    let db = st.db.as_ref().ok_or_else(kernel_not_open)?;
+    backup_impl::create(db, &dir, &password, include_settings, out_path)
+}
+
+/// بازیابی بسته — پس از موفقیت پایگاه‌داده بازگردانده‌شده در کرنل بارگذاری
+/// می‌شود و رویداد `kernel://ready` دوباره گسیل می‌گردد.
+///
+/// بسته می‌تواند با مسیر (`package_path`) یا با بایت‌های فایل انتخاب‌شده در
+/// WebView (`file_name` + `data`) داده شود.
+#[tauri::command]
+fn backup_restore(
+    app: AppHandle,
+    state: State<'_, Mutex<KernelState>>,
+    package_path: Option<String>,
+    file_name: Option<String>,
+    data: Option<Vec<u8>>,
+    password: String,
+) -> Result<aria_backup_engine::RestoreReport, CmdError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CmdError::new(0, format!("خطای مسیر داده: {e}")))?;
+    let source = backup_impl::resolve_source(
+        &dir,
+        package_path.as_deref(),
+        file_name.as_deref(),
+        data.as_deref(),
+    )?;
+    let report = backup_impl::restore(&source.display().to_string(), &dir, &password)?;
+
+    // پاک‌سازی نسخه موقت دریافت‌شده از WebView (تنها فایل‌های داخل inbox)
+    let inbox = dir.join("restore-inbox");
+    if source.starts_with(&inbox) {
+        let _ = std::fs::remove_file(&source);
+    }
+
+    // بارگذاری مجدد پایگاه‌داده بازگردانده‌شده در کرنل
+    let restored_db = Database::open(&backup_impl::workspace(&dir).db_path(), None)
+        .map_err(|e| CmdError::new(0, format!("خطای بازگشایی پایگاه‌داده بازیابی‌شده: {e}")))?;
+    {
+        let mut st = state.lock().unwrap();
+        st.db = Some(restored_db);
+        st.mode = "file";
+    }
+    app.emit("kernel://ready", true)
+        .map_err(|e| CmdError::new(0, format!("خطای اعلان آمادگی کرنل: {e}")))?;
+    Ok(report)
+}
+
+/// فراداده بسته بکاپ — بدون گذرواژه، برای نمایش پیش از بازیابی.
+#[tauri::command]
+fn backup_inspect(
+    app: AppHandle,
+    package_path: Option<String>,
+    file_name: Option<String>,
+    data: Option<Vec<u8>>,
+) -> Result<aria_backup_engine::BackupManifest, CmdError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CmdError::new(0, format!("خطای مسیر داده: {e}")))?;
+    let source = backup_impl::resolve_source(
+        &dir,
+        package_path.as_deref(),
+        file_name.as_deref(),
+        data.as_deref(),
+    )?;
+    backup_impl::inspect(&source.display().to_string())
+}
+
+/// تأیید کامل صحت بسته — رمزگشایی و بررسی چک‌سام‌ها بدون تغییر دیسک.
+#[tauri::command]
+fn backup_verify(
+    app: AppHandle,
+    package_path: Option<String>,
+    file_name: Option<String>,
+    data: Option<Vec<u8>>,
+    password: String,
+) -> Result<aria_backup_engine::BackupManifest, CmdError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CmdError::new(0, format!("خطای مسیر داده: {e}")))?;
+    let source = backup_impl::resolve_source(
+        &dir,
+        package_path.as_deref(),
+        file_name.as_deref(),
+        data.as_deref(),
+    )?;
+    backup_impl::verify(&source.display().to_string(), &password)
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Mutex::new(KernelState::default()))
@@ -976,7 +1204,11 @@ fn main() {
             symbols_list,
             attachment_ingest,
             attachment_data,
-            mt_import
+            mt_import,
+            backup_create,
+            backup_restore,
+            backup_inspect,
+            backup_verify
         ])
         .setup(|app| {
             // در محیط توسعه مسیر داده تضمین می‌شود (برای فازهای بکاپ/تنظیمات)
@@ -989,6 +1221,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use super::backup_impl;
     use super::journal_impl;
     use aria_domain_engine::commands::command_type;
     use aria_domain_engine::DomainService;
@@ -1541,5 +1774,77 @@ mod tests {
         assert!(report.file_duplicate);
         assert_eq!(report.imported, 0);
         assert_eq!(report.duplicates, 2);
+    }
+
+    // ==================== بکاپ و بازیابی (فاز ۱.۱۶) ====================
+
+    const BACKUP_PASSWORD: &str = "Passw0rd!-Tahan-2026";
+
+    #[test]
+    fn backup_bridge_roundtrip_through_default_path() {
+        let db = seeded();
+        create_trade(&db);
+        let root = std::env::temp_dir().join(format!("tahan-bak-{}", uuid::Uuid::new_v4()));
+
+        let report = backup_impl::create(&db, &root, BACKUP_PASSWORD, true, None).unwrap();
+        assert!(report.out_path.contains("backups"));
+        assert!(report.out_path.ends_with(".tahanbak"));
+        assert!(std::path::Path::new(&report.out_path).is_file());
+
+        // فراداده بدون گذرواژه خوانا است
+        let m = backup_impl::inspect(&report.out_path).unwrap();
+        assert!(m.is_supported());
+        assert!(m.includes_settings);
+
+        // گذرواژه نادرست با کد قراردادی رد می‌شود
+        let err = backup_impl::verify(&report.out_path, "Wrong!Pass9-Zzz").unwrap_err();
+        assert_eq!(err.code, 1601);
+
+        // تأیید کامل با گذرواژه درست
+        backup_impl::verify(&report.out_path, BACKUP_PASSWORD).unwrap();
+
+        // بازیابی روی میزکار تازه — فایل پایگاه‌داده بازگردانده می‌شود
+        let root2 = std::env::temp_dir().join(format!("tahan-bak-{}", uuid::Uuid::new_v4()));
+        let rr = backup_impl::restore(&report.out_path, &root2, BACKUP_PASSWORD).unwrap();
+        assert!(rr.database_bytes > 0);
+        assert!(backup_impl::workspace(&root2).db_path().is_file());
+
+        // پایگاه‌داده بازیابی‌شده داده معامله را دارد
+        let restored = Database::open(&backup_impl::workspace(&root2).db_path(), None).unwrap();
+        {
+            let conn = restored.lock();
+            assert_eq!(
+                conn.query_row("SELECT count(*) FROM journal_trades", [], |r| r.get::<_, i64>(0))
+                    .unwrap(),
+                1
+            );
+        }
+
+        // مسیر ناموجود — کد ۱۶۰۰
+        let err = backup_impl::inspect(&format!("{}\\no-such.tahanbak", root.display())).unwrap_err();
+        assert_eq!(err.code, 1600);
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&root2);
+    }
+
+    #[test]
+    fn backup_bridge_rejects_weak_password_before_any_work() {
+        let db = seeded();
+        let root = std::env::temp_dir().join(format!("tahan-bak-{}", uuid::Uuid::new_v4()));
+        let err = backup_impl::create(&db, &root, "short", false, None).unwrap_err();
+        assert_eq!(err.code, 1604);
+        assert!(!root.join("backups").exists() || std::fs::read_dir(root.join("backups")).unwrap().count() == 0,
+            "no package file is left behind");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn backup_bridge_restore_missing_package_is_1600() {
+        let root = std::env::temp_dir().join(format!("tahan-bak-{}", uuid::Uuid::new_v4()));
+        let err = backup_impl::restore("Z:\\definitely\\missing.tahanbak", &root, BACKUP_PASSWORD)
+            .unwrap_err();
+        assert_eq!(err.code, 1600);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

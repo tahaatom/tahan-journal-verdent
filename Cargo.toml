@@ -12,6 +12,7 @@ members = [
     "crates/aria-query-engine",
     "crates/aria-ui-engine",
     "crates/aria-import-engine",
+    "crates/aria-backup-engine",
     "apps/tahan-desktop",
 ]
 

@@ -7,6 +7,7 @@ import { queryClient } from "./queryClient";
 import { CommandPalette } from "./components/CommandPalette";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JournalPage } from "./pages/JournalPage";
+import { BackupPanel } from "./backup/BackupPanel";
 import { EmptyState } from "./components/States";
 import { useTheme } from "./theme";
 
@@ -126,7 +127,7 @@ export default function App() {
           {page === "trades" && <PageStub message={t("placeholder.trades")} />}
           {page === "fields" && <PageStub message={t("placeholder.fields")} />}
           {page === "plugins" && <PageStub message={t("placeholder.plugins")} />}
-          {page === "backup" && <PageStub message={t("placeholder.backup")} />}
+          {page === "backup" && <BackupPanel />}
           {page === "settings" && (
             <div data-testid="page-settings" className="flex flex-col gap-3 text-sm">
               <p>{t("theme.light")} / {t("theme.dark")}</p>
